@@ -46,7 +46,7 @@
 ### Вариант 1: Клонирование напрямую в папку плагинов (рекомендуется)
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/antigravity-context-tree.git ~/.gemini/config/plugins/context-tree
+git clone https://github.com/LebedevLC/antigravity-context-tree.git ~/.gemini/config/plugins/context-tree
 ```
 
 Antigravity автоматически обнаружит плагин **без перезапуска**.
@@ -54,7 +54,7 @@ Antigravity автоматически обнаружит плагин **без 
 ### Вариант 2: Через `agy plugin install`
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/antigravity-context-tree.git
+git clone https://github.com/LebedevLC/antigravity-context-tree.git
 agy plugin install ./antigravity-context-tree
 ```
 
