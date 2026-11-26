@@ -1,0 +1,22 @@
+{
+  "name": "antigravity-context-tree",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Antigravity MCP App plugin for live conversation context tokens, compaction history, and chat/subchat trees.",
+  "scripts": {
+    "build": "npm run build:ui && npm run build:server",
+    "build:ui": "node scripts/build-ui.mjs",
+    "build:server": "node scripts/build-server.mjs",
+    "sync:titles": "node scripts/sync-titles.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
