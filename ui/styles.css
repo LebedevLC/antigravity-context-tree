@@ -347,6 +347,274 @@ select {
   opacity: 1;
 }
 
+.dot.branch-running {
+  background: transparent;
+  border: 1.8px solid var(--fg-ok);
+  box-shadow: 0 0 0 2px var(--bg-ok);
+  opacity: 1;
+}
+
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-ok);
+  border: 1px solid rgba(52, 211, 153, 0.42);
+  color: var(--fg-ok);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 0.12s ease;
+}
+
+.update-pill:hover {
+  filter: brightness(1.1);
+}
+
+.settings-drawer-wrap {
+  border-bottom: 1px solid var(--bd-1);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+
+.settings-drawer-wrap .settings-drawer {
+  border-bottom: 1px solid var(--bd-2);
+}
+
+.update-panel {
+  padding: 9px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--bg-2);
+}
+
+.update-panel.is-inline {
+  border-bottom: 1px solid var(--bd-1);
+  flex-shrink: 0;
+}
+
+.update-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.update-panel-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--fg-1);
+}
+
+.update-panel-sub {
+  font-size: 11.5px;
+  color: var(--fg-2);
+}
+
+.update-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cmd-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  border: 1px solid var(--bd-2);
+  font-size: 11px;
+  color: var(--fg-2);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* Branch & Swarm summary UI */
+.role-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 650;
+  background: var(--bg-3);
+  color: var(--fg-2);
+  border: 1px solid var(--bd-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.role-tag.swarm {
+  background: var(--bg-info);
+  color: var(--fg-info);
+  border-color: var(--bd-info);
+}
+
+.branch-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  border: 1px solid var(--bd-2);
+}
+
+.branch-summary.tone-warn {
+  border-color: var(--bd-warn);
+  background: linear-gradient(180deg, var(--bg-warn), var(--bg-1) 65%);
+}
+
+.branch-summary.tone-danger {
+  border-color: var(--bd-danger);
+  background: linear-gradient(180deg, var(--bg-danger), var(--bg-1) 65%);
+}
+
+.branch-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.branch-summary-title {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--fg-1);
+}
+
+.branch-summary-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.branch-badge.ok {
+  background: var(--bg-ok);
+  color: var(--fg-ok);
+}
+
+.branch-badge.warn {
+  background: var(--bg-warn);
+  color: var(--fg-warn);
+}
+
+.branch-badge.danger {
+  background: var(--bg-danger);
+  color: var(--fg-danger);
+}
+
+.branch-summary-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--fg-2);
+}
+
+.branch-metric {
+  white-space: nowrap;
+}
+
+.branch-metric-peak {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.branch-peak-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--bd-1);
+  background: var(--bg-2);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  max-width: 220px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.branch-peak-btn:hover {
+  border-color: var(--bd-info);
+  background: var(--bg-3);
+}
+
+.branch-peak-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-1);
+}
+
+.branch-sum-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 650;
+  background: var(--bg-2);
+  border: 1px solid var(--bd-2);
+}
+
+.simple-row.selected .branch-sum-chip,
+.tree-item.selected .branch-sum-chip {
+  background: var(--bg-1);
+}
+
+.simple-sub-count.sev-bg-warn,
+.simple-sub-count.sev-bg-yellow {
+  background: var(--bg-warn);
+  color: var(--fg-warn);
+  font-weight: 650;
+}
+
+.simple-sub-count.sev-bg-red {
+  background: var(--bg-danger);
+  color: var(--fg-danger);
+  font-weight: 650;
+}
+
+.simple-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 4px 2px;
+  margin-top: 4px;
+  border-top: 1px solid var(--bd-2);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

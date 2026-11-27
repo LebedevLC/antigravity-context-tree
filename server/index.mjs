@@ -17,6 +17,7 @@ import { SettingsStore, resolveDataDir } from "./settings.mjs";
 import { TitlesStore } from "./titles.mjs";
 import { buildMonitorSnapshot } from "./tree.mjs";
 import { resolveCompactionThreshold } from "./models.mjs";
+import { UpdateChecker } from "./updater.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(__dirname, "..");
@@ -41,6 +42,10 @@ const settingsStore = new SettingsStore(dataDir);
 const titlesStore = new TitlesStore(dataDir);
 const scanner = new TranscriptScanner();
 const apiClient = new ConversationApiClient();
+const updateChecker = new UpdateChecker({
+  pluginRoot: PLUGIN_ROOT,
+  dataDir,
+});
 
 function formatTokensShort(n) {
   if (!n) return "0";
@@ -113,6 +118,7 @@ async function computeSnapshot(filter = {}, extra = null, explicitSelectedId = n
     settingsStore.load(),
     titlesStore.loadAll(),
     scanner.scanAll(),
+    updateChecker.ensureLoaded(),
   ]);
   const brainIds = transcripts.map((t) => t.id);
   const includeArchived = filter.includeArchived ?? settings.showArchived ?? false;
@@ -145,6 +151,7 @@ async function computeSnapshot(filter = {}, extra = null, explicitSelectedId = n
     ...snapshot,
     detectedConversationId,
     detectedSource,
+    updateInfo: updateChecker.getInfo(),
   };
 }
 
@@ -159,7 +166,7 @@ async function loadAppHtml() {
 const server = new McpServer(
   {
     name: "context-tree-monitor",
-    version: "1.0.0",
+    version: "1.1.0",
   },
   {
     capabilities: {
@@ -236,12 +243,18 @@ registerAppTool(
     await recordCallMetaDiagnostic("open_context_monitor", extra, snapshot.detectedConversationId);
     const selectedId = snapshot.detectedConversationId || args?.selectedId || null;
     const active = snapshot.active;
+    const branchPart =
+      active?.branch && active.descendantCount > 0
+        ? ` Ветка (${active.descendantCount} подчатов): всего ${formatTokensShort(
+            active.branch.totalContextTokens
+          )}, пик подчата ${formatTokensShort(active.branch.maxChildContextTokens)}.`
+        : "";
     const summaryText = active
       ? `Монитор контекста (${snapshot.modeLabel}): активный чат «${active.title}» — ${formatTokensShort(
           active.contextTokens
         )} / ${formatTokensShort(active.contextLimit)} (${active.percentOfLimit}%), кэш ${
           active.cacheHitRatio
-        }%, сжатий: ${active.compactionCount}. Всего чатов: ${snapshot.stats.totalConversations} (подчатов: ${
+        }%, сжатий: ${active.compactionCount}.${branchPart} Всего чатов: ${snapshot.stats.totalConversations} (подчатов: ${
           snapshot.stats.subchats
         }).`
       : `Монитор контекста (${snapshot.modeLabel}): чатов найдено ${snapshot.stats.totalConversations}.`;
@@ -470,6 +483,31 @@ registerAppTool(
   }
 );
 
+// 8. App-only tool: check GitHub for plugin updates
+registerAppTool(
+  server,
+  "check_plugin_updates",
+  {
+    title: "Проверить обновления плагина",
+    description: "App-only: сравнивает локальную версию plugin.json с актуальной версией на GitHub.",
+    inputSchema: {
+      force: z.boolean().optional(),
+    },
+    _meta: {
+      ui: {
+        visibility: ["app"],
+      },
+    },
+  },
+  async (args) => {
+    const updateInfo = await updateChecker.checkNow({ force: args?.force !== false });
+    return {
+      content: [{ type: "text", text: updateInfo.updateAvailable ? "update_available" : "up_to_date" }],
+      structuredContent: { updateInfo },
+    };
+  }
+);
+
 async function recordStartupDiagnostic() {
   try {
     const env = apiClient.getEnvConfig();
@@ -497,7 +535,8 @@ async function recordStartupDiagnostic() {
 }
 
 async function main() {
-  await recordStartupDiagnostic();
+  await Promise.all([recordStartupDiagnostic(), updateChecker.ensureLoaded()]);
+  updateChecker.startAutoCheck();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

@@ -4,15 +4,19 @@ import {
   applyHostStyleVariables,
 } from "@modelcontextprotocol/ext-apps";
 
-const app = new App({ name: "context-tree-monitor", version: "1.0.0" }, {});
+const app = new App({ name: "context-tree-monitor", version: "1.1.0" }, {});
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const ALLOWED_EXTERNAL_PREFIXES = ["https://github.com/LebedevLC/"];
 
 const state = {
   connected: false,
   capabilities: {},
   hostContext: null,
   snapshot: null,
+  updateInfo: null,
+  checkingUpdates: false,
+  simpleUpdatesOpen: false,
   viewMode: "simple", // "simple" | "detailed"
   groupBy: "project", // "project" | "context" | "date"
   collapsedGroups: new Set(),
@@ -80,6 +84,27 @@ function fmtTime(iso) {
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function pluralRu(n, one, few, many) {
+  const abs = Math.abs(Number(n) || 0) % 100;
+  const mod10 = abs % 10;
+  if (abs >= 11 && abs <= 19) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
 let toastTimer = null;
 function showToast(msg) {
   const el = document.getElementById("toast");
@@ -113,6 +138,49 @@ async function copyText(text, label = "Скопировано") {
     showToast(label);
   } catch {
     showToast("Не удалось скопировать");
+  }
+}
+
+async function openExternalUrl(url) {
+  if (!url || !ALLOWED_EXTERNAL_PREFIXES.some((p) => url.startsWith(p))) {
+    showToast("Внешняя ссылка заблокирована политикой безопасности");
+    return;
+  }
+  try {
+    await app.openLink({ url });
+  } catch {
+    await copyText(url, "Ссылка скопирована в буфер");
+  }
+}
+
+async function checkUpdatesNow() {
+  if (!state.connected || state.checkingUpdates || !state.capabilities?.serverTools) return;
+  state.checkingUpdates = true;
+  render();
+  try {
+    const res = await app.callServerTool({
+      name: "check_plugin_updates",
+      arguments: { force: true },
+    });
+    const info = res?.structuredContent?.updateInfo;
+    if (info) {
+      state.updateInfo = info;
+      if (state.snapshot) state.snapshot.updateInfo = info;
+      if (info.status === "ok") {
+        showToast(
+          info.updateAvailable
+            ? `Доступно обновление v${info.latestVersion}!`
+            : `Установлена последняя версия (v${info.currentVersion})`
+        );
+      } else {
+        showToast(info.error || "Не удалось проверить обновления");
+      }
+    }
+  } catch (err) {
+    showToast(`Ошибка проверки: ${err?.message || "неизвестно"}`);
+  } finally {
+    state.checkingUpdates = false;
+    render();
   }
 }
 
@@ -203,13 +271,35 @@ function getFilteredRoots() {
   });
 }
 
+function collectDescendants(node, depth = 1, acc = []) {
+  for (const ch of node?.children || []) {
+    acc.push({ node: ch, depth });
+    collectDescendants(ch, depth + 1, acc);
+  }
+  return acc;
+}
+
 function getBranchMaxContext(node) {
+  if (node?.branch && Number.isFinite(node.branch.maxContextTokens)) {
+    return node.branch.maxContextTokens;
+  }
   let mx = node.contextTokens || 0;
   for (const ch of node.children || []) {
     const c = getBranchMaxContext(ch);
     if (c > mx) mx = c;
   }
   return mx;
+}
+
+function getBranchTotalContext(node) {
+  if (node?.branch && Number.isFinite(node.branch.totalContextTokens)) {
+    return node.branch.totalContextTokens;
+  }
+  let sum = node?.contextTokens || 0;
+  for (const ch of node?.children || []) {
+    sum += getBranchTotalContext(ch);
+  }
+  return sum;
 }
 
 function getBranchLatestMs(node) {
@@ -228,7 +318,11 @@ function sortTreeForMode(nodes, groupBy) {
     children: sortTreeForMode(n.children || [], groupBy),
   }));
   if (groupBy === "context") {
-    cloned.sort((a, b) => (b.contextTokens || 0) - (a.contextTokens || 0));
+    cloned.sort((a, b) => {
+      const diffMax = getBranchMaxContext(b) - getBranchMaxContext(a);
+      if (diffMax !== 0) return diffMax;
+      return getBranchTotalContext(b) - getBranchTotalContext(a);
+    });
   } else {
     cloned.sort((a, b) => getBranchLatestMs(b) - getBranchLatestMs(a));
   }
@@ -300,6 +394,7 @@ function buildGroupedRoots(roots, groupBy) {
     g.maxCtx = Math.max(g.maxCtx, getBranchMaxContext(r));
     g.latestMs = Math.max(g.latestMs, getBranchLatestMs(r));
     if (r.runState === "running") g.running++;
+    if (r.branch?.runningChildren > 0) g.running += r.branch.runningChildren;
   }
 
   const list = Array.from(buckets.values());
@@ -526,7 +621,7 @@ function renderDetailedChartSvg(history, contextLimit, compactionThreshold, { co
   `;
 }
 
-// ---------- Shared Progress Bar ----------
+// ---------- Shared Progress Bar & Branch Summary ----------
 
 function renderProgressBar(contextTokens, contextLimit, compactionThreshold, severity, sizeClass = "") {
   const fillPct = contextLimit > 0 ? Math.min(100, (contextTokens / contextLimit) * 100) : 0;
@@ -539,6 +634,114 @@ function renderProgressBar(contextTokens, contextLimit, compactionThreshold, sev
     <div class="bar-wrap ${sizeClass}" title="${esc(tip)}">
       <div class="bar-fill ${esc(severity)}" style="width:${fillPct.toFixed(2)}%"></div>
       <div class="bar-threshold" style="left:${threshPct.toFixed(2)}%"></div>
+    </div>
+  `;
+}
+
+function renderBranchSummaryBox(node, { compact = false } = {}) {
+  const b = node?.branch;
+  const count = node?.descendantCount || 0;
+  if (!b || count === 0) return "";
+
+  const isSwarm = Boolean(b.hasSwarmChildren || node.isSwarmCoordinator);
+  const unitLabel = isSwarm
+    ? pluralRu(count, "воркер", "воркера", "воркеров")
+    : pluralRu(count, "подчат", "подчата", "подчатов");
+  const titleLabel = isSwarm ? `Рой · ${count} ${unitLabel}` : `Ветка · ${count} ${unitLabel}`;
+
+  const badges = [];
+  if (b.runningChildren > 0) {
+    badges.push(`<span class="branch-badge ok">● ${b.runningChildren} акт.</span>`);
+  }
+  if (b.overThresholdChildren > 0) {
+    badges.push(`<span class="branch-badge danger">${b.overThresholdChildren} выше порога</span>`);
+  } else if (b.warningChildren > 0) {
+    badges.push(`<span class="branch-badge warn">${b.warningChildren} близко к порогу</span>`);
+  }
+
+  const peakLimit = b.maxChildLimit || node.contextLimit || 1_048_576;
+  const peakThresh = b.maxChildThreshold || node.compactionThreshold || 450_000;
+  const peakBtn = b.maxChildId
+    ? `<button class="branch-peak-btn sev-${esc(b.maxChildSeverity)}" data-action="jump-node" data-id="${esc(b.maxChildId)}" title="Перейти к самому тяжёлому подчату: ${esc(b.maxChildTitle || "")} (${esc(fmtTokens(b.maxChildContextTokens))}, ${b.maxChildPercent}%)">
+        <span class="branch-peak-name">${esc(b.maxChildTitle || "подчат")}</span>
+        <span class="mono">${esc(fmtTokens(b.maxChildContextTokens))}</span>
+        <span>→</span>
+      </button>`
+    : `<span class="mono sev-${esc(b.maxChildSeverity)}">${esc(fmtTokens(b.maxChildContextTokens))}</span>`;
+
+  const boxTone =
+    b.childrenWorstSeverity === "red"
+      ? "tone-danger"
+      : b.childrenWorstSeverity === "yellow"
+      ? "tone-warn"
+      : "";
+
+  return `
+    <div class="branch-summary ${boxTone} ${compact ? "is-compact" : ""}">
+      <div class="branch-summary-head">
+        <span class="branch-summary-title">${esc(titleLabel)}</span>
+        <span class="branch-summary-badges">${badges.join("")}</span>
+      </div>
+      <div class="branch-summary-metrics">
+        <span class="branch-metric" title="Сумма активного контекста этого чата (${esc(fmtTokens(node.contextTokens))}) и всех ${count} подчатов (${esc(fmtTokens(b.childrenContextTokens))})">
+          Всего ветка <strong class="mono sev-${esc(b.worstSeverity)}">Σ ${esc(fmtTokens(b.totalContextTokens))}</strong>
+        </span>
+        <span class="branch-metric-peak">
+          <span>Пик:</span>
+          ${peakBtn}
+        </span>
+      </div>
+      ${renderProgressBar(b.maxChildContextTokens, peakLimit, peakThresh, b.maxChildSeverity, "thin")}
+    </div>
+  `;
+}
+
+function renderUpdatePill(upd) {
+  if (!upd?.updateAvailable) return "";
+  return `<button class="update-pill" data-action="goto-updates" title="Доступна новая версия v${esc(upd.latestVersion)} на GitHub (установлена v${esc(upd.currentVersion)})">↑ v${esc(upd.latestVersion)}</button>`;
+}
+
+function renderUpdateCard(upd, { inline = false } = {}) {
+  const info = upd || {
+    currentVersion: "1.1.0",
+    status: "never",
+    repoUrl: "https://github.com/LebedevLC/antigravity-context-tree",
+    updateCommand: "cd ~/.gemini/config/plugins/context-tree && git pull",
+  };
+
+  let badgeHtml = `<span class="pill">v${esc(info.currentVersion)}</span>`;
+  let lineText = "Проверка обновлений запускается автоматически раз в 12 часов.";
+  if (info.status === "ok" && info.updateAvailable) {
+    badgeHtml = `<span class="pill ok">Новая v${esc(info.latestVersion)}</span>`;
+    lineText = `Установлена v${info.currentVersion}, на GitHub доступна v${info.latestVersion} (проверено ${fmtDateTime(info.checkedAt)}).`;
+  } else if (info.status === "ok") {
+    badgeHtml = `<span class="pill ok">Актуально · v${esc(info.currentVersion)}</span>`;
+    lineText = `На GitHub v${info.latestVersion} — установлена последняя версия (проверено ${fmtDateTime(info.checkedAt)}).`;
+  } else if (info.status === "offline" || info.status === "error") {
+    badgeHtml = `<span class="pill warn">Офлайн · v${esc(info.currentVersion)}</span>`;
+    lineText = info.error || "Не удалось связаться с GitHub.";
+  }
+
+  return `
+    <div class="update-panel ${inline ? "is-inline" : ""}">
+      <div class="update-panel-head">
+        <span class="update-panel-title">Обновления плагина</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${badgeHtml}
+          ${inline ? `<button class="icon-btn" data-action="toggle-simple-updates" title="Скрыть">×</button>` : ""}
+        </div>
+      </div>
+      <div class="update-panel-sub">${esc(lineText)}</div>
+      <div class="update-panel-actions">
+        <button class="btn sm primary" data-action="check-updates" ${state.checkingUpdates ? "disabled" : ""}>
+          ${state.checkingUpdates ? "Проверка…" : "↻ Проверить обновления"}
+        </button>
+        <button class="btn sm" data-action="copy-update-cmd">Копировать git pull</button>
+        <button class="btn sm" data-action="open-link" data-url="${esc(info.repoUrl || "https://github.com/LebedevLC/antigravity-context-tree")}">GitHub ↗</button>
+      </div>
+      <div class="cmd-box mono">
+        <span>${esc(info.updateCommand || "cd ~/.gemini/config/plugins/context-tree && git pull")}</span>
+      </div>
     </div>
   `;
 }
@@ -579,18 +782,33 @@ function renderSimpleActiveCard(node, isGlobalRight = false) {
     node.compactionCount > 0
       ? `<span class="pill warn" title="Последнее сжатие: ${esc(fmtTime(node.lastCompactionAt))}">Сжатий: ${node.compactionCount}×</span>`
       : "";
-  const children = node.children || [];
+  const descendants = collectDescendants(node).sort(
+    (a, b) => (b.node.contextTokens || 0) - (a.node.contextTokens || 0)
+  );
   const freeWindow = Math.max(0, node.contextLimit - node.contextTokens);
   const freeWindowPct = node.contextLimit > 0 ? Math.max(0, 100 - node.percentOfLimit).toFixed(1) : "100";
   const untilCompaction = Math.max(0, node.compactionThreshold - node.contextTokens);
   const isRenaming = state.renamingId === node.id;
   const projTag = node.projectLabel ? `<span class="proj-tag">${esc(node.projectLabel)}</span>` : "";
+  const kindTag = node.isSwarmWorker
+    ? `<span class="role-tag swarm">рой</span>`
+    : node.isSwarmCoordinator || node.branch?.hasSwarmChildren
+    ? `<span class="role-tag swarm">координатор роя</span>`
+    : node.subagentType
+    ? `<span class="role-tag">${esc(node.subagentType)}</span>`
+    : "";
+  const dotCls =
+    node.runState === "running"
+      ? "running"
+      : node.branch?.runningChildren > 0
+      ? "branch-running"
+      : "idle-soft";
 
   return `
     <section class="simple-card ${isGlobalRight ? "" : "aux-only-active"}">
       <div class="simple-card-top">
         <div class="simple-title-wrap">
-          <span class="dot ${node.runState === "running" ? "running" : "idle-soft"}" title="${node.runState}"></span>
+          <span class="dot ${dotCls}" title="${node.runState === "running" ? "running" : node.branch?.runningChildren > 0 ? `Активно подчатов: ${node.branch.runningChildren}` : "idle"}"></span>
           <div style="min-width:0;flex:1">
             ${
               isRenaming
@@ -605,6 +823,7 @@ function renderSimpleActiveCard(node, isGlobalRight = false) {
             }
             <div class="simple-sub">
               ${projTag}
+              ${kindTag}
               <span>${esc(node.modelShort)}</span>
               <span>·</span>
               <span>${node.userTurns} ходов</span>
@@ -647,6 +866,8 @@ function renderSimpleActiveCard(node, isGlobalRight = false) {
         </div>
       </div>
 
+      ${renderBranchSummaryBox(node, { compact: !isGlobalRight })}
+
       ${
         isGlobalRight
           ? `
@@ -654,15 +875,16 @@ function renderSimpleActiveCard(node, isGlobalRight = false) {
           <button class="link-btn" data-action="set-mode" data-mode="detailed">График и детали в Подробном режиме →</button>
         </div>
         ${
-          children.length > 0
+          descendants.length > 0
             ? `
           <div style="margin-top:6px;padding-top:10px;border-top:1px solid var(--bd-2);display:flex;flex-direction:column;gap:5px">
-            <div class="simple-section-label">Подчаты (${children.length})</div>
-            ${children
+            <div class="simple-section-label">${node.branch?.hasSwarmChildren ? "Воркеры роя и подчаты" : "Подчаты ветки"} (${descendants.length})</div>
+            ${descendants
               .map(
-                (ch) => `
-              <div class="simple-row" data-action="select-node" data-id="${esc(ch.id)}">
+                ({ node: ch, depth }) => `
+              <div class="simple-row" data-action="jump-node" data-id="${esc(ch.id)}">
                 <span class="dot ${ch.runState === "running" ? "running" : "idle-soft"}"></span>
+                ${ch.isSwarmWorker ? `<span class="role-tag swarm">рой</span>` : depth > 1 ? `<span class="role-tag">ур.${depth}</span>` : ""}
                 <span class="simple-row-title" title="${esc(ch.title)}">${esc(ch.title)}</span>
                 <span class="simple-row-ctx mono sev-${esc(ch.severity)}">${esc(fmtTokens(ch.contextTokens))} · ${ch.percentOfLimit}%</span>
               </div>
@@ -684,35 +906,67 @@ function renderSimpleTreeNode(node, isChild = false) {
   const hasChildren = Array.isArray(node.children) && node.children.length > 0;
   const isExpanded = state.expandedIds.has(node.id);
   const isSelected = state.selectedId === node.id;
+  const b = node.branch || null;
   // Hide redundant project pill when already grouped by project
   const projTag =
     !isChild && state.groupBy !== "project" && node.projectLabel
       ? `<span class="proj-tag">${esc(node.projectLabel)}</span>`
       : "";
+  const swarmTag = node.isSwarmWorker
+    ? `<span class="role-tag swarm">рой</span>`
+    : !isChild && (node.isSwarmCoordinator || b?.hasSwarmChildren)
+    ? `<span class="role-tag swarm">рой</span>`
+    : "";
 
-  const subCount =
-    hasChildren && !isExpanded
-      ? `<span class="simple-sub-count">+${node.descendantCount}</span>`
+  const dotCls =
+    node.runState === "running"
+      ? "running"
+      : b?.runningChildren > 0
+      ? "branch-running"
+      : "idle-soft";
+
+  const subSevCls =
+    b?.childrenWorstSeverity === "red"
+      ? "sev-bg-red"
+      : b?.childrenWorstSeverity === "yellow"
+      ? "sev-bg-yellow"
       : "";
+  const subCount =
+    hasChildren && (!isExpanded || b?.childrenWorstSeverity !== "green")
+      ? `<span class="simple-sub-count ${subSevCls}" title="${b ? `Подчатов: ${node.descendantCount} · пик ${fmtTokens(b.maxChildContextTokens)} (${b.maxChildTitle || ""})` : ""}">+${node.descendantCount}</span>`
+      : "";
+
+  const ctxHtml =
+    b && node.descendantCount > 0
+      ? `<span class="simple-row-ctx mono" title="Этот чат: ${esc(fmtTokens(node.contextTokens))} (${node.percentOfLimit}%) · Всего ветка (${node.descendantCount + 1}): ${esc(fmtTokens(b.totalContextTokens))} · Пик подчата: ${esc(b.maxChildTitle || "подчат")} (${esc(fmtTokens(b.maxChildContextTokens))}, ${b.maxChildPercent}%)">
+          <span class="sev-${esc(node.severity)}">${esc(fmtTokens(node.contextTokens))}</span>
+          <span class="branch-sum-chip sev-${esc(b.worstSeverity)}">Σ ${esc(fmtTokens(b.totalContextTokens))}</span>
+        </span>`
+      : `<span class="simple-row-ctx mono sev-${esc(node.severity)}">${esc(fmtTokens(node.contextTokens))} · ${node.percentOfLimit}%</span>`;
 
   const childrenHtml =
     hasChildren && isExpanded
       ? `<div class="simple-children">${node.children.map((ch) => renderSimpleTreeNode(ch, true)).join("")}</div>`
       : "";
 
+  const rowTitle = b
+    ? `${node.projectLabel ? `[${node.projectLabel}] ` : ""}${node.title} · ${node.modelName} · Этот чат: ${fmtTokens(node.contextTokens)} · Вся ветка: ${fmtTokens(b.totalContextTokens)} · Пик подчата: ${b.maxChildTitle || ""} ${fmtTokens(b.maxChildContextTokens)}`
+    : `${node.projectLabel ? `[${node.projectLabel}] ` : ""}${node.title} · ${node.modelName}`;
+
   return `
     <div class="simple-branch">
-      <div class="simple-row ${isChild ? "is-child" : ""} ${isSelected ? "selected" : ""}" data-action="select-node" data-id="${esc(node.id)}" title="${esc(node.projectLabel ? `[${node.projectLabel}] ` : "")}${esc(node.title)} · ${esc(node.modelName)}">
+      <div class="simple-row ${isChild ? "is-child" : ""} ${isSelected ? "selected" : ""}" data-action="select-node" data-id="${esc(node.id)}" title="${esc(rowTitle)}">
         ${
           hasChildren
             ? `<button class="toggle-btn" data-action="toggle-branch" data-id="${esc(node.id)}" title="${isExpanded ? "Свернуть" : "Раскрыть"}">${isExpanded ? ICON_CHEVRON_DOWN : ICON_CHEVRON_RIGHT}</button>`
             : `<span class="toggle-spacer"></span>`
         }
-        <span class="dot ${node.runState === "running" ? "running" : "idle-soft"}"></span>
+        <span class="dot ${dotCls}"></span>
         ${projTag}
+        ${swarmTag}
         <span class="simple-row-title">${esc(node.title)}</span>
         ${subCount}
-        <span class="simple-row-ctx mono sev-${esc(node.severity)}">${esc(fmtTokens(node.contextTokens))} · ${node.percentOfLimit}%</span>
+        ${ctxHtml}
       </div>
       ${childrenHtml}
     </div>
@@ -769,6 +1023,8 @@ function renderDetailedActiveCard(node, settings) {
 
       ${renderProgressBar(node.contextTokens, node.contextLimit, node.compactionThreshold, node.severity)}
 
+      ${renderBranchSummaryBox(node, { compact: true })}
+
       <div class="metrics-grid">
         <div class="metric-box">
           <div class="metric-label">Кэш (hit rate)</div>
@@ -809,17 +1065,38 @@ function renderDetailedTreeNode(node, isChild = false) {
   const isSelected = state.selectedId === node.id;
   const showInline = state.accordionOpenId === node.id;
   const isPinned = state.snapshot?.settings?.pinnedConversationId === node.id;
+  const b = node.branch || null;
 
   const compBadge =
     node.compactionCount > 0
       ? `<span class="pill warn" title="Сработало автосжатие: ${node.compactionCount}× (последнее ${esc(fmtTime(node.lastCompactionAt))})">${node.compactionCount}×</span>`
       : "";
-  const subBadge =
-    node.descendantCount > 0
-      ? ` · ${node.descendantCount} подч.`
+  const subMetaHtml =
+    node.descendantCount > 0 && b
+      ? ` · <span class="sev-${esc(b.childrenWorstSeverity)}">${node.descendantCount} ${b.hasSwarmChildren ? "в рое" : "подч."} · пик ${esc(fmtTokens(b.maxChildContextTokens))}</span>`
+      : node.isSwarmWorker
+      ? ` · рой`
       : node.subagentType
-      ? ` · ${node.subagentType}`
+      ? ` · ${esc(node.subagentType)}`
       : "";
+  const dotCls =
+    node.runState === "running"
+      ? "running"
+      : b?.runningChildren > 0
+      ? "branch-running"
+      : "";
+  const swarmTag = node.isSwarmWorker
+    ? `<span class="role-tag swarm">рой</span>`
+    : !isChild && (node.isSwarmCoordinator || b?.hasSwarmChildren)
+    ? `<span class="role-tag swarm">рой</span>`
+    : "";
+  const ctxHtml =
+    b && node.descendantCount > 0
+      ? `<span class="tree-ctx mono" title="Этот чат: ${esc(fmtTokens(node.contextTokens))} · Всего ветка: ${esc(fmtTokens(b.totalContextTokens))} · Пик подчата: ${esc(fmtTokens(b.maxChildContextTokens))}">
+          <span class="sev-${esc(node.severity)}">${esc(fmtTokens(node.contextTokens))}</span>
+          <span class="branch-sum-chip sev-${esc(b.worstSeverity)}">Σ ${esc(fmtTokens(b.totalContextTokens))}</span>
+        </span>`
+      : `<span class="tree-ctx mono sev-${esc(node.severity)}">${esc(fmtTokens(node.contextTokens))} · ${node.percentOfLimit}%</span>`;
 
   const inlineDetailHtml = showInline
     ? `
@@ -854,15 +1131,16 @@ function renderDetailedTreeNode(node, isChild = false) {
               ? `<button class="toggle-btn" data-action="toggle-branch" data-id="${esc(node.id)}" title="${isExpanded ? "Свернуть ветку" : "Раскрыть ветку"}">${isExpanded ? ICON_CHEVRON_DOWN : ICON_CHEVRON_RIGHT}</button>`
               : `<span class="toggle-spacer"></span>`
           }
-          <span class="dot ${node.runState === "running" ? "running" : ""}" title="${node.runState}"></span>
+          <span class="dot ${dotCls}" title="${node.runState === "running" ? "running" : b?.runningChildren > 0 ? `Активно подчатов: ${b.runningChildren}` : "idle"}"></span>
+          ${swarmTag}
           <span class="tree-title" title="${esc(node.title)}">${esc(node.title)}</span>
-          <span class="tree-ctx mono sev-${esc(node.severity)}">${esc(fmtTokens(node.contextTokens))} · ${node.percentOfLimit}%</span>
+          ${ctxHtml}
         </div>
         <div class="tree-row-bottom">
           <div class="tree-bar-slot">
             ${renderProgressBar(node.contextTokens, node.contextLimit, node.compactionThreshold, node.severity, "thin")}
           </div>
-          <span class="tree-meta">${esc(node.modelShort)} · ${esc(fmtAgo(node.updatedAt))}${esc(subBadge)}</span>
+          <span class="tree-meta">${esc(node.modelShort)} · ${esc(fmtAgo(node.updatedAt))}${subMetaHtml}</span>
           ${compBadge}
         </div>
         ${inlineDetailHtml}
@@ -883,7 +1161,10 @@ function renderDetailedInspector(node) {
     detail?.history ||
     (node.sparkline || []).map((p) => ({ s: p.s, t: p.t, isCompaction: Boolean(p.cp) }));
   const compactions = detail?.compactions || [];
-  const children = node.children || [];
+  const descendants = collectDescendants(node).sort(
+    (a, b) => (b.node.contextTokens || 0) - (a.node.contextTokens || 0)
+  );
+  const b = node.branch || null;
   const remaining = Math.max(0, node.compactionThreshold - node.contextTokens);
   const canMsg = Boolean(state.capabilities?.message);
   const canApiCreate = Boolean(snap?.canCreateViaApi);
@@ -936,6 +1217,8 @@ function renderDetailedInspector(node) {
         ${renderProgressBar(node.contextTokens, node.contextLimit, node.compactionThreshold, node.severity, "large")}
       </div>
 
+      ${renderBranchSummaryBox(node, { compact: false })}
+
       <div class="inspector-kpis">
         <div class="metric-box">
           <div class="metric-label">Последний шаг (разбивка)</div>
@@ -950,12 +1233,22 @@ function renderDetailedInspector(node) {
         <div class="metric-box">
           <div class="metric-label">Автокомпакции</div>
           <div class="metric-value mono" style="color:${node.compactionCount > 0 ? "var(--fg-warn)" : "var(--fg-2)"}">${node.compactionCount}</div>
-          <div class="inspector-sub">${node.lastCompactionAt ? `последняя: ${fmtTime(node.lastCompactionAt)}` : "не срабатывали"}</div>
+          <div class="inspector-sub">${
+            b && b.totalCompactions > node.compactionCount
+              ? `в ветке: ${b.totalCompactions}×`
+              : node.lastCompactionAt
+              ? `последняя: ${fmtTime(node.lastCompactionAt)}`
+              : "не срабатывали"
+          }</div>
         </div>
         <div class="metric-box">
           <div class="metric-label">Всего за сессию</div>
           <div class="metric-value mono">${esc(fmtTokens(node.sessionTotalTokens))}</div>
-          <div class="inspector-sub">${children.length} прямых подчатов</div>
+          <div class="inspector-sub">${
+            b && descendants.length > 0
+              ? `ветка (${descendants.length} подч.): ${esc(fmtTokens(b.totalSessionTokens))}`
+              : `${descendants.length} подчатов`
+          }</div>
         </div>
       </div>
 
@@ -968,20 +1261,21 @@ function renderDetailedInspector(node) {
 
       <div class="inspector-bottom-grid">
         <div class="sub-panel">
-          <div class="sub-panel-title">Дочерние подчаты (${children.length})</div>
+          <div class="sub-panel-title">${b?.hasSwarmChildren ? "Воркеры роя и подчаты" : "Подчаты ветки"} (${descendants.length})</div>
           ${
-            children.length === 0
+            descendants.length === 0
               ? `<div class="empty-note" style="padding:10px 4px">У этого чата нет привязанных подчатов</div>`
-              : children
+              : descendants
                   .map(
-                    (ch) => `
-                  <div class="sub-row" data-action="select-node" data-id="${esc(ch.id)}">
-                    <div style="display:flex;align-items:center;gap:6px">
+                    ({ node: ch, depth }) => `
+                  <div class="sub-row" data-action="jump-node" data-id="${esc(ch.id)}">
+                    <div style="display:flex;align-items:center;gap:6px;min-width:0">
                       <span class="dot ${ch.runState === "running" ? "running" : ""}"></span>
+                      ${ch.isSwarmWorker ? `<span class="role-tag swarm">рой</span>` : depth > 1 ? `<span class="role-tag">ур.${depth}</span>` : ""}
                       <span style="font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ch.title)}</span>
                     </div>
                     <div class="mono" style="font-size:11px;color:var(--fg-2)">
-                      ${esc(fmtTokens(ch.contextTokens))} (${ch.percentOfLimit}%) · ${esc(ch.modelShort)} · ${esc(fmtAgo(ch.updatedAt))}
+                      <span class="sev-${esc(ch.severity)}" style="font-weight:650">${esc(fmtTokens(ch.contextTokens))} (${ch.percentOfLimit}%)</span> · ${esc(ch.modelShort)} · ${esc(fmtAgo(ch.updatedAt))}
                     </div>
                   </div>
                 `
@@ -1023,60 +1317,63 @@ function renderDetailedInspector(node) {
   `;
 }
 
-function renderSettingsDrawer(settings) {
+function renderSettingsDrawer(settings, upd) {
   if (!state.settingsOpen || !settings || state.viewMode !== "detailed") return "";
   return `
-    <div class="settings-drawer">
-      <div class="setting-field">
-        <label for="set-interval">Интервал автообновления</label>
-        <select id="set-interval" data-setting="refreshIntervalSec">
-          ${[3, 5, 10, 15, 30]
-            .map((sec) => `<option value="${sec}" ${settings.refreshIntervalSec === sec ? "selected" : ""}>Каждые ${sec} сек</option>`)
-            .join("")}
-        </select>
-      </div>
-
-      <div class="setting-field">
-        <label for="set-th-mode">Порог автосжатия</label>
-        <select id="set-th-mode" data-setting="thresholdMode">
-          <option value="adaptive" ${settings.thresholdMode === "adaptive" ? "selected" : ""}>Адаптивный (450K / 135K)</option>
-          <option value="custom_k" ${settings.thresholdMode === "custom_k" ? "selected" : ""}>Фиксированный (в K токенов)</option>
-          <option value="percent" ${settings.thresholdMode === "percent" ? "selected" : ""}>Процент от окна модели</option>
-        </select>
-      </div>
-
-      ${
-        settings.thresholdMode === "custom_k"
-          ? `
+    <div class="settings-drawer-wrap">
+      <div class="settings-drawer">
         <div class="setting-field">
-          <label for="set-th-k">Порог, тыс. токенов (K)</label>
-          <input id="set-th-k" type="number" min="20" max="1000" step="5" value="${settings.customThresholdK}" data-setting="customThresholdK" />
+          <label for="set-interval">Интервал автообновления</label>
+          <select id="set-interval" data-setting="refreshIntervalSec">
+            ${[3, 5, 10, 15, 30]
+              .map((sec) => `<option value="${sec}" ${settings.refreshIntervalSec === sec ? "selected" : ""}>Каждые ${sec} сек</option>`)
+              .join("")}
+          </select>
         </div>
-      `
-          : settings.thresholdMode === "percent"
-          ? `
+
         <div class="setting-field">
-          <label for="set-th-pct">Порог, % от окна</label>
-          <input id="set-th-pct" type="number" min="5" max="95" step="5" value="${settings.customThresholdPercent}" data-setting="customThresholdPercent" />
+          <label for="set-th-mode">Порог автосжатия</label>
+          <select id="set-th-mode" data-setting="thresholdMode">
+            <option value="adaptive" ${settings.thresholdMode === "adaptive" ? "selected" : ""}>Адаптивный (450K / 135K)</option>
+            <option value="custom_k" ${settings.thresholdMode === "custom_k" ? "selected" : ""}>Фиксированный (в K токенов)</option>
+            <option value="percent" ${settings.thresholdMode === "percent" ? "selected" : ""}>Процент от окна модели</option>
+          </select>
         </div>
-      `
-          : ""
-      }
 
-      <div class="setting-field">
-        <label for="set-age">Скрывать старые чаты</label>
-        <select id="set-age" data-setting="maxAgeDays">
-          <option value="0" ${settings.maxAgeDays === 0 ? "selected" : ""}>Показывать все</option>
-          <option value="1" ${settings.maxAgeDays === 1 ? "selected" : ""}>За последние 24 часа</option>
-          <option value="7" ${settings.maxAgeDays === 7 ? "selected" : ""}>За 7 дней</option>
-          <option value="30" ${settings.maxAgeDays === 30 ? "selected" : ""}>За 30 дней</option>
-        </select>
+        ${
+          settings.thresholdMode === "custom_k"
+            ? `
+          <div class="setting-field">
+            <label for="set-th-k">Порог, тыс. токенов (K)</label>
+            <input id="set-th-k" type="number" min="20" max="1000" step="5" value="${settings.customThresholdK}" data-setting="customThresholdK" />
+          </div>
+        `
+            : settings.thresholdMode === "percent"
+            ? `
+          <div class="setting-field">
+            <label for="set-th-pct">Порог, % от окна</label>
+            <input id="set-th-pct" type="number" min="5" max="95" step="5" value="${settings.customThresholdPercent}" data-setting="customThresholdPercent" />
+          </div>
+        `
+            : ""
+        }
+
+        <div class="setting-field">
+          <label for="set-age">Скрывать старые чаты</label>
+          <select id="set-age" data-setting="maxAgeDays">
+            <option value="0" ${settings.maxAgeDays === 0 ? "selected" : ""}>Показывать все</option>
+            <option value="1" ${settings.maxAgeDays === 1 ? "selected" : ""}>За последние 24 часа</option>
+            <option value="7" ${settings.maxAgeDays === 7 ? "selected" : ""}>За 7 дней</option>
+            <option value="30" ${settings.maxAgeDays === 30 ? "selected" : ""}>За 30 дней</option>
+          </select>
+        </div>
+
+        <label class="setting-check">
+          <input type="checkbox" ${settings.showArchived ? "checked" : ""} data-setting="showArchived" />
+          Показывать архивные
+        </label>
       </div>
-
-      <label class="setting-check">
-        <input type="checkbox" ${settings.showArchived ? "checked" : ""} data-setting="showArchived" />
-        Показывать архивные
-      </label>
+      ${renderUpdateCard(upd, { inline: false })}
     </div>
   `;
 }
@@ -1123,6 +1420,7 @@ function render() {
 
   const snap = state.snapshot;
   const settings = snap.settings || {};
+  const upd = state.updateInfo || snap.updateInfo || null;
   const currentNode = getCurrentNode();
   const roots = getFilteredRoots();
   const modeClass = snap.mode === "full_api" ? "info" : "ok";
@@ -1139,17 +1437,21 @@ function render() {
 
   if (isSimple) {
     const isSearching = state.search.trim().length > 0;
+    const curVer = upd?.currentVersion || "1.1.0";
 
     root.innerHTML = `
       <header class="topbar">
         <div class="topbar-left">
           ${ICON_TREE}
           ${modeSwitchHtml}
+          ${renderUpdatePill(upd)}
         </div>
         <div class="topbar-actions">
           <button class="icon-btn ${state.inFlightSnapshot ? "spinning" : ""}" data-action="refresh" ${state.inFlightSnapshot ? "disabled" : ""} title="Обновить (авто каждые ${settings.refreshIntervalSec || 5}с)">${ICON_REFRESH}</button>
         </div>
       </header>
+
+      ${state.simpleUpdatesOpen ? renderUpdateCard(upd, { inline: true }) : ""}
 
       <main class="workspace">
         <div class="left-pane">
@@ -1170,6 +1472,13 @@ function render() {
           <div class="simple-tree-list">
             ${renderGroupedList(roots, renderSimpleTreeNode)}
           </div>
+
+          <div class="simple-footer">
+            <span class="mono">v${esc(curVer)}</span>
+            <button class="link-btn" style="font-size:11px" data-action="toggle-simple-updates">
+              ${upd?.updateAvailable ? `↑ Доступна v${esc(upd.latestVersion)}` : "Обновления"}
+            </button>
+          </div>
         </div>
 
         <section class="right-pane">
@@ -1184,6 +1493,7 @@ function render() {
         <div class="topbar-left">
           ${ICON_TREE}
           ${modeSwitchHtml}
+          ${renderUpdatePill(upd)}
           <span class="pill ${modeClass}" title="${esc(modeTitle)}">${esc(snap.modeLabel)}</span>
           <span class="topbar-stats">
             ${snap.stats.totalConversations} чатов · ${snap.stats.running} активн. · ${snap.stats.subchats} подчатов · ${snap.stats.compactions} сжатий
@@ -1194,11 +1504,11 @@ function render() {
             ${settings.autoRefresh ? `● Авто ${settings.refreshIntervalSec}с` : "○ Авто выкл"}
           </button>
           <button class="btn sm" data-action="refresh" ${state.inFlightSnapshot ? "disabled" : ""}>Обновить</button>
-          <button class="btn sm ${state.settingsOpen ? "active" : ""}" data-action="toggle-settings">Пороги</button>
+          <button class="btn sm ${state.settingsOpen ? "active" : ""}" data-action="toggle-settings">Настройки</button>
         </div>
       </header>
 
-      ${renderSettingsDrawer(settings)}
+      ${renderSettingsDrawer(settings, upd)}
       ${renderNewChatBar()}
 
       <main class="workspace">
@@ -1259,6 +1569,9 @@ function applySnapshot(snapshot, { fromToolResult = false } = {}) {
   if (!snapshot || typeof snapshot !== "object") return;
   const firstLoad = !state.snapshot;
   state.snapshot = snapshot;
+  if (snapshot.updateInfo) {
+    state.updateInfo = snapshot.updateInfo;
+  }
   state.lastError = null;
 
   if (snapshot.settings?.viewMode === "simple" || snapshot.settings?.viewMode === "detailed") {
@@ -1557,6 +1870,58 @@ document.addEventListener("click", (e) => {
     if (state.expandedIds.has(id)) state.expandedIds.delete(id);
     else state.expandedIds.add(id);
     render();
+    return;
+  }
+
+  if (action === "jump-node" && id) {
+    e.stopPropagation();
+    state.selectedId = id;
+    state.userSelected = true;
+    expandAncestorsOf(state.snapshot?.tree, id);
+    if (state.viewMode === "detailed") {
+      if (window.innerWidth < 820) {
+        state.accordionOpenId = id;
+      } else {
+        loadConversationDetail(id);
+      }
+    } else if (state.simpleChartOpen) {
+      loadConversationDetail(id);
+    }
+    render();
+    return;
+  }
+
+  if (action === "goto-updates") {
+    if (state.viewMode === "simple") {
+      state.simpleUpdatesOpen = true;
+    } else {
+      state.settingsOpen = true;
+    }
+    render();
+    return;
+  }
+
+  if (action === "toggle-simple-updates") {
+    state.simpleUpdatesOpen = !state.simpleUpdatesOpen;
+    render();
+    return;
+  }
+
+  if (action === "check-updates") {
+    checkUpdatesNow();
+    return;
+  }
+
+  if (action === "copy-update-cmd") {
+    const cmd =
+      (state.updateInfo || state.snapshot?.updateInfo)?.updateCommand ||
+      "cd ~/.gemini/config/plugins/context-tree && git pull";
+    copyText(cmd, "Команда обновления скопирована");
+    return;
+  }
+
+  if (action === "open-link") {
+    openExternalUrl(actionEl.dataset.url);
     return;
   }
 

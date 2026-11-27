@@ -1,5 +1,15 @@
 import { resolveCompactionThreshold } from "./models.mjs";
 
+const SEVERITY_RANK = { green: 0, yellow: 1, red: 2 };
+
+function maxSeverity(a, b) {
+  return (SEVERITY_RANK[b] || 0) > (SEVERITY_RANK[a] || 0) ? b : a || "green";
+}
+
+function isPlaceholderTitle(t) {
+  return !t || /^Чат\s+[0-9a-f]{6,12}$/i.test(t.trim());
+}
+
 function normalizeRunState(apiRunState, localRunState) {
   if (apiRunState === "RUN_STATE_RUNNING") return "running";
   if (apiRunState === "RUN_STATE_CANCELLING") return "running";
@@ -26,16 +36,18 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
   const projectNames = titlesData?.projectNames || {};
   const customById = titlesData?.customById || {};
 
-  // Collect explicit parent->child role annotations from invoke_subagent in transcripts
+  // Collect explicit parent->child role annotations from invoke_subagent and swarm in transcripts
   const spawnedParentByChild = new Map();
   for (const tr of transcripts) {
     for (const ch of tr.spawnedChildren || []) {
-      if (!spawnedParentByChild.has(ch.childId)) {
+      const existing = spawnedParentByChild.get(ch.childId);
+      if (!existing || (ch.isSwarm && !existing.isSwarm)) {
         spawnedParentByChild.set(ch.childId, {
           parentId: tr.id,
           role: ch.role || "",
           typeName: ch.typeName || "",
-          linkSource: "invoke_subagent",
+          isSwarm: Boolean(ch.isSwarm),
+          linkSource: ch.isSwarm ? "swarm" : "invoke_subagent",
         });
       }
     }
@@ -55,17 +67,21 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
     const customTitle = (customById[tr.id] || "").trim();
     const spawned = spawnedParentByChild.get(tr.id) || null;
 
-    const apiParent = api?.metadata?.parentConversationId || synced?.parentId || null;
+    const liveApiParent = api?.metadata?.parentConversationId || null;
+    const syncedParent = synced?.parentId || null;
     const apiRoot = api?.metadata?.rootConversationId || null;
 
     let parentId = null;
     let linkSource = null;
-    if (apiParent && apiParent !== tr.id) {
-      parentId = apiParent;
-      linkSource = api ? "api" : "synced";
+    if (liveApiParent && liveApiParent !== tr.id) {
+      parentId = liveApiParent;
+      linkSource = "api";
     } else if (spawned && spawned.parentId !== tr.id) {
       parentId = spawned.parentId;
       linkSource = spawned.linkSource;
+    } else if (syncedParent && syncedParent !== tr.id) {
+      parentId = syncedParent;
+      linkSource = "synced";
     } else if (tr.inferredParentId && tr.inferredParentId !== tr.id) {
       parentId = tr.inferredParentId;
       linkSource = tr.inferredLinkKind || "transcript";
@@ -74,11 +90,20 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
     const apiTitle = (api?.annotations?.title || "").trim();
     const syncedTitle = (synced?.title || "").trim();
     const apiSummary = (api?.state?.summary || "").trim();
-    const roleTitle = spawned?.role
-      ? `${spawned.role}${spawned.typeName ? ` (${spawned.typeName})` : ""}`
-      : "";
+    const isSwarmWorker = Boolean(spawned?.isSwarm || tr.isSwarmWorker);
+    const swarmRoleTitle = spawned?.isSwarm && spawned?.role ? spawned.role : "";
+    const roleTitle =
+      !spawned?.isSwarm && spawned?.role
+        ? `${spawned.role}${spawned.typeName ? ` (${spawned.typeName})` : ""}`
+        : "";
 
-    const title = customTitle || apiTitle || syncedTitle || roleTitle || apiSummary || tr.localTitle;
+    const realApiTitle = isPlaceholderTitle(apiTitle) ? "" : apiTitle;
+    const realSyncedTitle = isPlaceholderTitle(syncedTitle) ? "" : syncedTitle;
+    const title =
+      customTitle ||
+      (isSwarmWorker ? swarmRoleTitle || realApiTitle || realSyncedTitle : realApiTitle || realSyncedTitle || roleTitle) ||
+      apiSummary ||
+      tr.localTitle;
     const projectId = api?.metadata?.projectId || synced?.projectId || null;
     const projectLabel =
       (projectId && projectNames[projectId]) ||
@@ -105,8 +130,11 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
     allNodes.set(tr.id, {
       id: tr.id,
       title,
-      role: spawned?.role || null,
-      subagentType: spawned?.typeName || null,
+      role: spawned?.role || tr.swarmWorkerHintName || null,
+      subagentType: spawned?.typeName || (isSwarmWorker ? "swarm" : null),
+      isSwarmCoordinator: Boolean(tr.isSwarmCoordinator),
+      isSwarmWorker,
+      swarmTitle: tr.swarmTitle || null,
       parentId,
       rootId: apiRoot || null,
       linkSource,
@@ -229,23 +257,93 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
     }
   }
 
-  // Sort children by updatedMs descending, and compute branch max updatedMs
-  function sortBranch(node) {
+  // Sort children by updatedMs descending, inherit projectLabel, and aggregate full branch stats
+  function aggregateBranch(node, inheritedProject = null) {
+    if (!node.projectLabel && inheritedProject) {
+      node.projectLabel = inheritedProject;
+    }
+    const effectiveProject = node.projectLabel || inheritedProject;
+
     let maxUpdated = node.updatedMs;
     let totalDescendants = 0;
+    let childrenContextTokens = 0;
+    let maxChild = null;
+    let childrenWorstSeverity = "green";
+    let runningChildren = 0;
+    let overThresholdChildren = 0;
+    let warningChildren = 0;
+    let childrenSessionTokens = 0;
+    let childrenCompactions = 0;
+    let hasSwarmChildren = false;
+
     for (const ch of node.children) {
-      const sub = sortBranch(ch);
+      const sub = aggregateBranch(ch, effectiveProject);
       if (sub.maxUpdated > maxUpdated) maxUpdated = sub.maxUpdated;
       totalDescendants += 1 + sub.totalDescendants;
+      childrenContextTokens += sub.branchTotalContextTokens;
+      childrenSessionTokens += sub.branchTotalSessionTokens;
+      childrenCompactions += sub.branchTotalCompactions;
+      runningChildren += (ch.runState === "running" ? 1 : 0) + sub.runningChildren;
+
+      const chOver =
+        ch.severity === "red" ||
+        (ch.compactionThreshold > 0 && ch.contextTokens >= ch.compactionThreshold);
+      const chWarn = ch.severity === "yellow" || ch.severity === "red";
+      overThresholdChildren += (chOver ? 1 : 0) + sub.overThresholdChildren;
+      warningChildren += (chWarn ? 1 : 0) + sub.warningChildren;
+      if (ch.isSwarmWorker || sub.hasSwarmChildren) hasSwarmChildren = true;
+
+      childrenWorstSeverity = maxSeverity(childrenWorstSeverity, sub.branchWorstSeverity);
+
+      // Compare candidate hottest descendant (direct child vs hottest descendant inside child)
+      const candidates = [ch, sub.maxChild].filter(Boolean);
+      for (const cand of candidates) {
+        if (!maxChild || (cand.contextTokens || 0) > (maxChild.contextTokens || 0)) {
+          maxChild = cand;
+        }
+      }
     }
+
     node.children.sort((a, b) => b.updatedMs - a.updatedMs);
     node.descendantCount = totalDescendants;
     node.branchUpdatedMs = maxUpdated;
-    return { maxUpdated, totalDescendants };
+    node.branchChildrenContextTokens = childrenContextTokens;
+    node.branchTotalContextTokens = (node.contextTokens || 0) + childrenContextTokens;
+    node.branchMaxChildContextTokens = maxChild?.contextTokens || 0;
+    node.branchMaxChildId = maxChild?.id || null;
+    node.branchMaxChildTitle = maxChild?.title || null;
+    node.branchMaxChildPercent = maxChild?.percentOfLimit || 0;
+    node.branchMaxChildLimit = maxChild?.contextLimit || 0;
+    node.branchMaxChildThreshold = maxChild?.compactionThreshold || 0;
+    node.branchMaxChildSeverity = maxChild?.severity || "green";
+    node.branchMaxContextTokens = Math.max(node.contextTokens || 0, node.branchMaxChildContextTokens);
+    node.branchChildrenWorstSeverity = childrenWorstSeverity;
+    node.branchWorstSeverity =
+      totalDescendants > 0 ? maxSeverity(node.severity, childrenWorstSeverity) : node.severity;
+    node.branchRunningChildren = runningChildren;
+    node.branchOverThresholdChildren = overThresholdChildren;
+    node.branchWarningChildren = warningChildren;
+    node.branchTotalSessionTokens = (node.sessionTotalTokens || 0) + childrenSessionTokens;
+    node.branchTotalCompactions = (node.compactionCount || 0) + childrenCompactions;
+    node.hasSwarmChildren = hasSwarmChildren;
+
+    return {
+      maxUpdated,
+      totalDescendants,
+      branchTotalContextTokens: node.branchTotalContextTokens,
+      branchTotalSessionTokens: node.branchTotalSessionTokens,
+      branchTotalCompactions: node.branchTotalCompactions,
+      branchWorstSeverity: node.branchWorstSeverity,
+      runningChildren,
+      overThresholdChildren,
+      warningChildren,
+      hasSwarmChildren,
+      maxChild,
+    };
   }
 
   for (const root of roots) {
-    sortBranch(root);
+    aggregateBranch(root, root.projectLabel || null);
   }
 
   roots.sort((a, b) => {
@@ -309,6 +407,9 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
       title: node.title,
       role: node.role,
       subagentType: node.subagentType,
+      isSwarmCoordinator: Boolean(node.isSwarmCoordinator),
+      isSwarmWorker: Boolean(node.isSwarmWorker),
+      swarmTitle: node.swarmTitle || null,
       parentId: node.parentId,
       linkSource: node.linkSource,
       projectId: node.projectId,
@@ -338,6 +439,29 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
       compactionCount: node.compactionCount,
       lastCompactionAt: node.lastCompactionAt,
       descendantCount: node.descendantCount || 0,
+      branch:
+        (node.descendantCount || 0) > 0
+          ? {
+              totalContextTokens: node.branchTotalContextTokens || node.contextTokens || 0,
+              childrenContextTokens: node.branchChildrenContextTokens || 0,
+              maxContextTokens: node.branchMaxContextTokens || node.contextTokens || 0,
+              maxChildContextTokens: node.branchMaxChildContextTokens || 0,
+              maxChildId: node.branchMaxChildId || null,
+              maxChildTitle: node.branchMaxChildTitle || null,
+              maxChildPercent: node.branchMaxChildPercent || 0,
+              maxChildLimit: node.branchMaxChildLimit || 0,
+              maxChildThreshold: node.branchMaxChildThreshold || 0,
+              maxChildSeverity: node.branchMaxChildSeverity || "green",
+              childrenWorstSeverity: node.branchChildrenWorstSeverity || "green",
+              worstSeverity: node.branchWorstSeverity || node.severity || "green",
+              runningChildren: node.branchRunningChildren || 0,
+              overThresholdChildren: node.branchOverThresholdChildren || 0,
+              warningChildren: node.branchWarningChildren || 0,
+              totalSessionTokens: node.branchTotalSessionTokens || node.sessionTotalTokens || 0,
+              totalCompactions: node.branchTotalCompactions || node.compactionCount || 0,
+              hasSwarmChildren: Boolean(node.hasSwarmChildren),
+            }
+          : null,
       sparkline: node.sparkline,
       children: depth < 5 ? node.children.map((ch) => serializeNode(ch, depth + 1)) : [],
     };
@@ -359,7 +483,7 @@ export function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesD
       compactions: totalCompactions,
       warnings: warningCount,
     },
-    active: active ? serializeNode(active, 1) : null,
+    active: active ? serializeNode(active, 0) : null,
     tree: filteredRoots.slice(0, 120).map((r) => serializeNode(r, 0)),
     settings,
   };

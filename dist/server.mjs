@@ -240,10 +240,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path5) {
-  if (!path5)
+function getElementAtPath(obj, path6) {
+  if (!path6)
     return obj;
-  return path5.reduce((acc, key) => acc?.[key], obj);
+  return path6.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -492,11 +492,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path5, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path5);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -685,7 +685,7 @@ function treeifyError(error40, _mapper) {
     return issue2.message;
   };
   const result = { errors: [] };
-  const processError = (error41, path5 = []) => {
+  const processError = (error41, path6 = []) => {
     var _a, _b;
     for (const issue2 of error41.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
@@ -695,7 +695,7 @@ function treeifyError(error40, _mapper) {
       } else if (issue2.code === "invalid_element") {
         processError({ issues: issue2.issues }, issue2.path);
       } else {
-        const fullpath = [...path5, ...issue2.path];
+        const fullpath = [...path6, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -725,9 +725,9 @@ function treeifyError(error40, _mapper) {
   processError(error40);
   return result;
 }
-function toDotPath(path5) {
+function toDotPath(path6) {
   const segs = [];
-  for (const seg of path5) {
+  for (const seg of path6) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -14877,8 +14877,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path5) {
-      let input = path5;
+    function removeDotSegments(path6) {
+      let input = path6;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -14952,11 +14952,11 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function removeDotSegmentsRelative(path5) {
-      if (path5 === "" || path5[0] === "/") {
-        return removeDotSegments(path5);
+    function removeDotSegmentsRelative(path6) {
+      if (path6 === "" || path6[0] === "/") {
+        return removeDotSegments(path6);
       }
-      const segments = path5.split("/");
+      const segments = path6.split("/");
       const last = segments.length - 1;
       const output = [];
       let trailingDirectory = false;
@@ -15319,8 +15319,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path5 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
+        const path6 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -18872,7 +18872,7 @@ var require_dist = __commonJS({
 
 // server/index.mjs
 import fs4 from "node:fs/promises";
-import path4 from "node:path";
+import path5 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/zod/v3/external.js
@@ -19353,8 +19353,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -19470,11 +19470,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -23058,11 +23058,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path5) {
-  if (path5.length === 0) {
+function getDotPath(path6) {
+  if (path6.length === 0) {
     return "object root";
   }
-  return path5.reduce((acc, seg, index) => {
+  return path6.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -28944,6 +28944,9 @@ function resolveCompactionThreshold(modelInfo, settings) {
 
 // server/transcripts.mjs
 var SUBAGENT_CREATED_RE = /Created the following subagent:\s*\{[\s\S]*?"conversationId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i;
+var SWARM_ADDED_PAIR_RE = /"name"\s*:\s*"([^"\\]{1,64})"[\s\S]{0,400}?"conversation_id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/gi;
+var SWARM_TITLED_RE = /"status"\s*:\s*"titled"[\s\S]{0,120}?"title"\s*:\s*"((?:[^"\\]|\\.)+)"/i;
+var SWARM_WORKTREE_RE = /worktrees\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/swarm-([a-z0-9_-]+?)-[0-9a-f]{6,12}/i;
 var SENDER_UUID_RE = /\bsender=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 var BRAIN_UUID_RE = /\bbrain\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 var HOME_DIR = os.homedir();
@@ -29047,8 +29050,14 @@ async function parseTranscriptFile(cid, filePath, stat) {
   let lineIndex = 0;
   const pendingSubagentMeta = [];
   const spawnedChildren = [];
+  const spawnedChildIds = /* @__PURE__ */ new Set();
+  let swarmTitle = null;
+  let isSwarmCoordinator = false;
+  let isSwarmWorker = false;
+  let swarmWorkerHintName = "";
   let inferredParentId = null;
   let inferredLinkKind = null;
+  let fallbackBoardParentId = null;
   const compactions = [];
   const history = [];
   const projectCounts = /* @__PURE__ */ new Map();
@@ -29074,14 +29083,37 @@ async function parseTranscriptFile(cid, filePath, stat) {
       lastStepType = type;
       lastStepStatus = status;
       lastStepHasToolCalls = Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0;
-      if (lineIndex <= 8 && !inferredParentId && (type === "SYSTEM_MESSAGE" || type === "USER_INPUT")) {
+      if (lineIndex <= 12 && (type === "SYSTEM_MESSAGE" || type === "USER_INPUT")) {
         const contentStr = typeof obj.content === "string" ? obj.content : "";
         if (contentStr) {
+          const isBoardNotification = /content=\[swarm\]\s*new board message/i.test(contentStr);
+          const isSwarmStartMsg = /You have just started\./i.test(contentStr) && /assignment|board|swarm/i.test(contentStr);
+          if (isBoardNotification || isSwarmStartMsg) {
+            isSwarmWorker = true;
+          }
+          if (!swarmWorkerHintName) {
+            const wtMatch = SWARM_WORKTREE_RE.exec(contentStr);
+            if (wtMatch) {
+              swarmWorkerHintName = wtMatch[2];
+              if (!inferredParentId && wtMatch[1].toLowerCase() !== cid.toLowerCase()) {
+                inferredParentId = wtMatch[1].toLowerCase();
+                inferredLinkKind = "swarm_start";
+              }
+            }
+          }
           const senderMatch = SENDER_UUID_RE.exec(contentStr);
           if (senderMatch && senderMatch[1].toLowerCase() !== cid.toLowerCase()) {
-            inferredParentId = senderMatch[1].toLowerCase();
-            inferredLinkKind = "sender";
-          } else {
+            const senderId = senderMatch[1].toLowerCase();
+            if (isSwarmStartMsg) {
+              inferredParentId = senderId;
+              inferredLinkKind = "swarm_start";
+            } else if (isBoardNotification) {
+              if (!fallbackBoardParentId) fallbackBoardParentId = senderId;
+            } else if (!inferredParentId) {
+              inferredParentId = senderId;
+              inferredLinkKind = "sender";
+            }
+          } else if (!inferredParentId) {
             const brainMatch = BRAIN_UUID_RE.exec(contentStr);
             if (brainMatch && brainMatch[1].toLowerCase() !== cid.toLowerCase()) {
               inferredParentId = brainMatch[1].toLowerCase();
@@ -29090,7 +29122,12 @@ async function parseTranscriptFile(cid, filePath, stat) {
           }
           if (!firstSystemHint && type === "SYSTEM_MESSAGE") {
             const roleLine = contentStr.match(/Role:\s*([^\n]+)/i);
-            if (roleLine) firstSystemHint = roleLine[1].trim().slice(0, 80);
+            if (roleLine) {
+              firstSystemHint = roleLine[1].trim().slice(0, 80);
+            } else if (isSwarmStartMsg) {
+              const nameMatch = contentStr.match(/\byou are\s+["`@]?([a-z0-9][a-z0-9_-]{1,30})["`@]?\b/i) || contentStr.match(/\bname(?:d)?\s+["`@]?([a-z0-9][a-z0-9_-]{1,30})["`@]?\b/i);
+              if (nameMatch) firstSystemHint = nameMatch[1];
+            }
           }
         }
       }
@@ -29125,6 +29162,16 @@ async function parseTranscriptFile(cid, filePath, stat) {
                 typeName: stripQuotes(args.TypeName || args.typeName || ""),
                 at: at || null
               });
+            } else if (tc && tc.name === "swarm") {
+              const args = tc.args || {};
+              const action = stripQuotes(args.action || "");
+              if (action === "add" || action === "title") {
+                isSwarmCoordinator = true;
+              }
+              if (action === "title") {
+                const t = stripQuotes(args.title || "");
+                if (t) swarmTitle = t;
+              }
             }
           }
         }
@@ -29184,14 +29231,54 @@ async function parseTranscriptFile(cid, filePath, stat) {
           const match = SUBAGENT_CREATED_RE.exec(obj.content);
           if (match) {
             const childId = match[1].toLowerCase();
-            if (childId !== cid.toLowerCase()) {
+            if (childId !== cid.toLowerCase() && !spawnedChildIds.has(childId)) {
+              spawnedChildIds.add(childId);
               const meta = pendingSubagentMeta.shift() || {};
               spawnedChildren.push({
                 childId,
                 role: meta.role || "",
                 typeName: meta.typeName || "",
+                isSwarm: false,
                 at: at || meta.at || null
               });
+            }
+          }
+        } else if (obj.content.includes('"conversation_id"') && obj.content.includes('"added"')) {
+          isSwarmCoordinator = true;
+          SWARM_ADDED_PAIR_RE.lastIndex = 0;
+          let m2;
+          while ((m2 = SWARM_ADDED_PAIR_RE.exec(obj.content)) !== null) {
+            const workerName = m2[1].trim();
+            const childId = m2[2].toLowerCase();
+            if (childId !== cid.toLowerCase() && !spawnedChildIds.has(childId)) {
+              spawnedChildIds.add(childId);
+              spawnedChildren.push({
+                childId,
+                role: workerName,
+                typeName: "swarm",
+                isSwarm: true,
+                at: at || null
+              });
+            }
+          }
+        } else if (!swarmTitle && obj.content.includes('"titled"')) {
+          const tm = SWARM_TITLED_RE.exec(obj.content);
+          if (tm) {
+            try {
+              swarmTitle = JSON.parse(`"${tm[1]}"`);
+            } catch {
+              swarmTitle = tm[1];
+            }
+            isSwarmCoordinator = true;
+          }
+        }
+        if (isSwarmWorker && !swarmWorkerHintName && lineIndex <= 30 && obj.content.includes("/worktrees/")) {
+          const wtMatch = SWARM_WORKTREE_RE.exec(obj.content);
+          if (wtMatch) {
+            swarmWorkerHintName = wtMatch[2];
+            if (!inferredParentId && wtMatch[1].toLowerCase() !== cid.toLowerCase()) {
+              inferredParentId = wtMatch[1].toLowerCase();
+              inferredLinkKind = "swarm_start";
             }
           }
         }
@@ -29199,6 +29286,10 @@ async function parseTranscriptFile(cid, filePath, stat) {
     }
   } finally {
     rl.close();
+  }
+  if (!inferredParentId && fallbackBoardParentId) {
+    inferredParentId = fallbackBoardParentId;
+    inferredLinkKind = "swarm_board_fallback";
   }
   const modelInfo = getModelInfo(lastPlanner?.model);
   const nowMs = Date.now();
@@ -29211,8 +29302,12 @@ async function parseTranscriptFile(cid, filePath, stat) {
     sizeBytes: stat.size,
     createdAt: createdAt || new Date(stat.birthtimeMs || stat.mtimeMs).toISOString(),
     updatedAt: lastCreatedAt || new Date(stat.mtimeMs).toISOString(),
-    localTitle: firstUserTitle || firstSystemHint || `\u0427\u0430\u0442 ${cid.slice(0, 8)}`,
+    localTitle: firstUserTitle || swarmWorkerHintName || firstSystemHint || `\u0427\u0430\u0442 ${cid.slice(0, 8)}`,
     detectedProject: pickTopProject(projectCounts),
+    isSwarmCoordinator,
+    isSwarmWorker,
+    swarmTitle,
+    swarmWorkerHintName: swarmWorkerHintName || null,
     userTurns,
     plannerSteps,
     model: modelInfo,
@@ -29648,6 +29743,13 @@ var TitlesStore = class {
 };
 
 // server/tree.mjs
+var SEVERITY_RANK = { green: 0, yellow: 1, red: 2 };
+function maxSeverity(a, b) {
+  return (SEVERITY_RANK[b] || 0) > (SEVERITY_RANK[a] || 0) ? b : a || "green";
+}
+function isPlaceholderTitle(t) {
+  return !t || /^Чат\s+[0-9a-f]{6,12}$/i.test(t.trim());
+}
 function normalizeRunState(apiRunState, localRunState) {
   if (apiRunState === "RUN_STATE_RUNNING") return "running";
   if (apiRunState === "RUN_STATE_CANCELLING") return "running";
@@ -29670,12 +29772,14 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
   const spawnedParentByChild = /* @__PURE__ */ new Map();
   for (const tr of transcripts) {
     for (const ch of tr.spawnedChildren || []) {
-      if (!spawnedParentByChild.has(ch.childId)) {
+      const existing = spawnedParentByChild.get(ch.childId);
+      if (!existing || ch.isSwarm && !existing.isSwarm) {
         spawnedParentByChild.set(ch.childId, {
           parentId: tr.id,
           role: ch.role || "",
           typeName: ch.typeName || "",
-          linkSource: "invoke_subagent"
+          isSwarm: Boolean(ch.isSwarm),
+          linkSource: ch.isSwarm ? "swarm" : "invoke_subagent"
         });
       }
     }
@@ -29690,16 +29794,20 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
     const synced = syncedById[tr.id] || null;
     const customTitle = (customById[tr.id] || "").trim();
     const spawned = spawnedParentByChild.get(tr.id) || null;
-    const apiParent = api?.metadata?.parentConversationId || synced?.parentId || null;
+    const liveApiParent = api?.metadata?.parentConversationId || null;
+    const syncedParent = synced?.parentId || null;
     const apiRoot = api?.metadata?.rootConversationId || null;
     let parentId = null;
     let linkSource = null;
-    if (apiParent && apiParent !== tr.id) {
-      parentId = apiParent;
-      linkSource = api ? "api" : "synced";
+    if (liveApiParent && liveApiParent !== tr.id) {
+      parentId = liveApiParent;
+      linkSource = "api";
     } else if (spawned && spawned.parentId !== tr.id) {
       parentId = spawned.parentId;
       linkSource = spawned.linkSource;
+    } else if (syncedParent && syncedParent !== tr.id) {
+      parentId = syncedParent;
+      linkSource = "synced";
     } else if (tr.inferredParentId && tr.inferredParentId !== tr.id) {
       parentId = tr.inferredParentId;
       linkSource = tr.inferredLinkKind || "transcript";
@@ -29707,8 +29815,12 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
     const apiTitle = (api?.annotations?.title || "").trim();
     const syncedTitle = (synced?.title || "").trim();
     const apiSummary = (api?.state?.summary || "").trim();
-    const roleTitle = spawned?.role ? `${spawned.role}${spawned.typeName ? ` (${spawned.typeName})` : ""}` : "";
-    const title = customTitle || apiTitle || syncedTitle || roleTitle || apiSummary || tr.localTitle;
+    const isSwarmWorker = Boolean(spawned?.isSwarm || tr.isSwarmWorker);
+    const swarmRoleTitle = spawned?.isSwarm && spawned?.role ? spawned.role : "";
+    const roleTitle = !spawned?.isSwarm && spawned?.role ? `${spawned.role}${spawned.typeName ? ` (${spawned.typeName})` : ""}` : "";
+    const realApiTitle = isPlaceholderTitle(apiTitle) ? "" : apiTitle;
+    const realSyncedTitle = isPlaceholderTitle(syncedTitle) ? "" : syncedTitle;
+    const title = customTitle || (isSwarmWorker ? swarmRoleTitle || realApiTitle || realSyncedTitle : realApiTitle || realSyncedTitle || roleTitle) || apiSummary || tr.localTitle;
     const projectId = api?.metadata?.projectId || synced?.projectId || null;
     const projectLabel = projectId && projectNames[projectId] || synced?.projectLabel || tr.detectedProject || null;
     const archived = Boolean(api ? api?.annotations?.archived : synced?.archived);
@@ -29725,8 +29837,11 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
     allNodes.set(tr.id, {
       id: tr.id,
       title,
-      role: spawned?.role || null,
-      subagentType: spawned?.typeName || null,
+      role: spawned?.role || tr.swarmWorkerHintName || null,
+      subagentType: spawned?.typeName || (isSwarmWorker ? "swarm" : null),
+      isSwarmCoordinator: Boolean(tr.isSwarmCoordinator),
+      isSwarmWorker,
+      swarmTitle: tr.swarmTitle || null,
       parentId,
       rootId: apiRoot || null,
       linkSource,
@@ -29839,21 +29954,80 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
       roots.push(node);
     }
   }
-  function sortBranch(node) {
+  function aggregateBranch(node, inheritedProject = null) {
+    if (!node.projectLabel && inheritedProject) {
+      node.projectLabel = inheritedProject;
+    }
+    const effectiveProject = node.projectLabel || inheritedProject;
     let maxUpdated = node.updatedMs;
     let totalDescendants = 0;
+    let childrenContextTokens = 0;
+    let maxChild = null;
+    let childrenWorstSeverity = "green";
+    let runningChildren = 0;
+    let overThresholdChildren = 0;
+    let warningChildren = 0;
+    let childrenSessionTokens = 0;
+    let childrenCompactions = 0;
+    let hasSwarmChildren = false;
     for (const ch of node.children) {
-      const sub = sortBranch(ch);
+      const sub = aggregateBranch(ch, effectiveProject);
       if (sub.maxUpdated > maxUpdated) maxUpdated = sub.maxUpdated;
       totalDescendants += 1 + sub.totalDescendants;
+      childrenContextTokens += sub.branchTotalContextTokens;
+      childrenSessionTokens += sub.branchTotalSessionTokens;
+      childrenCompactions += sub.branchTotalCompactions;
+      runningChildren += (ch.runState === "running" ? 1 : 0) + sub.runningChildren;
+      const chOver = ch.severity === "red" || ch.compactionThreshold > 0 && ch.contextTokens >= ch.compactionThreshold;
+      const chWarn = ch.severity === "yellow" || ch.severity === "red";
+      overThresholdChildren += (chOver ? 1 : 0) + sub.overThresholdChildren;
+      warningChildren += (chWarn ? 1 : 0) + sub.warningChildren;
+      if (ch.isSwarmWorker || sub.hasSwarmChildren) hasSwarmChildren = true;
+      childrenWorstSeverity = maxSeverity(childrenWorstSeverity, sub.branchWorstSeverity);
+      const candidates = [ch, sub.maxChild].filter(Boolean);
+      for (const cand of candidates) {
+        if (!maxChild || (cand.contextTokens || 0) > (maxChild.contextTokens || 0)) {
+          maxChild = cand;
+        }
+      }
     }
     node.children.sort((a, b) => b.updatedMs - a.updatedMs);
     node.descendantCount = totalDescendants;
     node.branchUpdatedMs = maxUpdated;
-    return { maxUpdated, totalDescendants };
+    node.branchChildrenContextTokens = childrenContextTokens;
+    node.branchTotalContextTokens = (node.contextTokens || 0) + childrenContextTokens;
+    node.branchMaxChildContextTokens = maxChild?.contextTokens || 0;
+    node.branchMaxChildId = maxChild?.id || null;
+    node.branchMaxChildTitle = maxChild?.title || null;
+    node.branchMaxChildPercent = maxChild?.percentOfLimit || 0;
+    node.branchMaxChildLimit = maxChild?.contextLimit || 0;
+    node.branchMaxChildThreshold = maxChild?.compactionThreshold || 0;
+    node.branchMaxChildSeverity = maxChild?.severity || "green";
+    node.branchMaxContextTokens = Math.max(node.contextTokens || 0, node.branchMaxChildContextTokens);
+    node.branchChildrenWorstSeverity = childrenWorstSeverity;
+    node.branchWorstSeverity = totalDescendants > 0 ? maxSeverity(node.severity, childrenWorstSeverity) : node.severity;
+    node.branchRunningChildren = runningChildren;
+    node.branchOverThresholdChildren = overThresholdChildren;
+    node.branchWarningChildren = warningChildren;
+    node.branchTotalSessionTokens = (node.sessionTotalTokens || 0) + childrenSessionTokens;
+    node.branchTotalCompactions = (node.compactionCount || 0) + childrenCompactions;
+    node.hasSwarmChildren = hasSwarmChildren;
+    return {
+      maxUpdated,
+      totalDescendants,
+      branchTotalContextTokens: node.branchTotalContextTokens,
+      branchTotalSessionTokens: node.branchTotalSessionTokens,
+      branchTotalCompactions: node.branchTotalCompactions,
+      branchWorstSeverity: node.branchWorstSeverity,
+      runningChildren,
+      overThresholdChildren,
+      warningChildren,
+      hasSwarmChildren,
+      maxChild
+    };
   }
   for (const root of roots) {
-    sortBranch(root);
+    aggregateBranch(root, root.projectLabel || null);
   }
   roots.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -29892,6 +30066,9 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
       title: node.title,
       role: node.role,
       subagentType: node.subagentType,
+      isSwarmCoordinator: Boolean(node.isSwarmCoordinator),
+      isSwarmWorker: Boolean(node.isSwarmWorker),
+      swarmTitle: node.swarmTitle || null,
       parentId: node.parentId,
       linkSource: node.linkSource,
       projectId: node.projectId,
@@ -29921,6 +30098,26 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
       compactionCount: node.compactionCount,
       lastCompactionAt: node.lastCompactionAt,
       descendantCount: node.descendantCount || 0,
+      branch: (node.descendantCount || 0) > 0 ? {
+        totalContextTokens: node.branchTotalContextTokens || node.contextTokens || 0,
+        childrenContextTokens: node.branchChildrenContextTokens || 0,
+        maxContextTokens: node.branchMaxContextTokens || node.contextTokens || 0,
+        maxChildContextTokens: node.branchMaxChildContextTokens || 0,
+        maxChildId: node.branchMaxChildId || null,
+        maxChildTitle: node.branchMaxChildTitle || null,
+        maxChildPercent: node.branchMaxChildPercent || 0,
+        maxChildLimit: node.branchMaxChildLimit || 0,
+        maxChildThreshold: node.branchMaxChildThreshold || 0,
+        maxChildSeverity: node.branchMaxChildSeverity || "green",
+        childrenWorstSeverity: node.branchChildrenWorstSeverity || "green",
+        worstSeverity: node.branchWorstSeverity || node.severity || "green",
+        runningChildren: node.branchRunningChildren || 0,
+        overThresholdChildren: node.branchOverThresholdChildren || 0,
+        warningChildren: node.branchWarningChildren || 0,
+        totalSessionTokens: node.branchTotalSessionTokens || node.sessionTotalTokens || 0,
+        totalCompactions: node.branchTotalCompactions || node.compactionCount || 0,
+        hasSwarmChildren: Boolean(node.hasSwarmChildren)
+      } : null,
       sparkline: node.sparkline,
       children: depth < 5 ? node.children.map((ch) => serializeNode(ch, depth + 1)) : []
     };
@@ -29941,15 +30138,162 @@ function buildMonitorSnapshot({ transcripts, apiResult, settings, titlesData = n
       compactions: totalCompactions,
       warnings: warningCount
     },
-    active: active ? serializeNode(active, 1) : null,
+    active: active ? serializeNode(active, 0) : null,
     tree: filteredRoots.slice(0, 120).map((r2) => serializeNode(r2, 0)),
     settings
   };
 }
 
+// server/updater.mjs
+import fsp2 from "node:fs/promises";
+import path4 from "node:path";
+var REMOTE_MANIFEST_URL = "https://raw.githubusercontent.com/LebedevLC/antigravity-context-tree/main/plugin.json";
+var REPO_URL = "https://github.com/LebedevLC/antigravity-context-tree";
+var UPDATE_CMD = "cd ~/.gemini/config/plugins/context-tree && git pull";
+var CACHE_TTL_MS = 12 * 36e5;
+var FETCH_TIMEOUT_MS = 1e4;
+var MAX_MANIFEST_BYTES = 64 * 1024;
+var STRICT_SEMVER_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
+function compareSemver(a, b) {
+  const pa = String(a || "0.0.0").replace(/^v/i, "").split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || "0.0.0").replace(/^v/i, "").split(".").map((x) => parseInt(x, 10) || 0);
+  const len = Math.max(pa.length, pb.length, 3);
+  for (let i = 0; i < len; i++) {
+    const va = pa[i] || 0;
+    const vb = pb[i] || 0;
+    if (va > vb) return 1;
+    if (va < vb) return -1;
+  }
+  return 0;
+}
+var UpdateChecker = class {
+  constructor({ pluginRoot, dataDir: dataDir2 }) {
+    this.pluginRoot = pluginRoot;
+    this.dataDir = dataDir2;
+    this.cachePath = path4.join(dataDir2, "update-check.json");
+    this.currentVersion = "1.1.0";
+    this.state = null;
+    this.inFlight = null;
+    this.loaded = false;
+  }
+  async ensureLoaded() {
+    if (this.loaded) return;
+    this.loaded = true;
+    try {
+      const manifestRaw = await fsp2.readFile(path4.join(this.pluginRoot, "plugin.json"), "utf8");
+      const manifest = JSON.parse(manifestRaw);
+      if (manifest?.version) this.currentVersion = String(manifest.version);
+    } catch {
+    }
+    try {
+      const cacheRaw = await fsp2.readFile(this.cachePath, "utf8");
+      const parsed = JSON.parse(cacheRaw);
+      if (parsed && typeof parsed === "object") {
+        this.state = {
+          ...parsed,
+          currentVersion: this.currentVersion,
+          updateAvailable: Boolean(parsed.latestVersion) && compareSemver(parsed.latestVersion, this.currentVersion) > 0
+        };
+      }
+    } catch {
+      this.state = null;
+    }
+  }
+  getInfo() {
+    return {
+      currentVersion: this.currentVersion,
+      latestVersion: this.state?.latestVersion || null,
+      updateAvailable: Boolean(
+        this.state?.latestVersion && compareSemver(this.state.latestVersion, this.currentVersion) > 0
+      ),
+      checkedAt: this.state?.checkedAt || null,
+      status: this.state?.status || "never",
+      // "ok" | "offline" | "error" | "never"
+      error: this.state?.error || null,
+      inFlight: Boolean(this.inFlight),
+      repoUrl: REPO_URL,
+      updateCommand: UPDATE_CMD
+    };
+  }
+  async checkNow({ force = false } = {}) {
+    await this.ensureLoaded();
+    if (!force && this.state?.checkedAt) {
+      const age = Date.now() - Date.parse(this.state.checkedAt);
+      if (Number.isFinite(age) && age >= 0 && age < CACHE_TTL_MS && this.state.status === "ok") {
+        return this.getInfo();
+      }
+    }
+    if (this.inFlight) return await this.inFlight;
+    const run = async () => {
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      try {
+        let remoteManifest;
+        if (process.env.CONTEXT_TREE_MOCK_REMOTE_MANIFEST) {
+          remoteManifest = JSON.parse(process.env.CONTEXT_TREE_MOCK_REMOTE_MANIFEST);
+        } else {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+          try {
+            const res = await fetch(REMOTE_MANIFEST_URL, {
+              headers: { "Cache-Control": "no-cache" },
+              referrerPolicy: "no-referrer",
+              signal: controller.signal
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const buf = await res.arrayBuffer();
+            if (buf.byteLength > MAX_MANIFEST_BYTES) {
+              throw new Error("\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0439 \u0443\u0434\u0430\u043B\u0451\u043D\u043D\u044B\u0439 plugin.json");
+            }
+            remoteManifest = JSON.parse(new TextDecoder("utf-8").decode(buf));
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        const latestVersion = String(remoteManifest?.version || "").trim();
+        if (!STRICT_SEMVER_RE.test(latestVersion)) {
+          throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442 \u0432\u0435\u0440\u0441\u0438\u0438 \u0432 \u0443\u0434\u0430\u043B\u0451\u043D\u043D\u043E\u043C plugin.json");
+        }
+        this.state = {
+          currentVersion: this.currentVersion,
+          latestVersion,
+          updateAvailable: compareSemver(latestVersion, this.currentVersion) > 0,
+          checkedAt: nowIso,
+          status: "ok",
+          error: null
+        };
+        await fsp2.mkdir(this.dataDir, { recursive: true });
+        await fsp2.writeFile(this.cachePath, JSON.stringify(this.state, null, 2) + "\n", "utf8");
+      } catch (err) {
+        const msg = String(err?.message || err || "\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0442\u0438");
+        const isAbort = err?.name === "AbortError" || /fetch failed|enotfound|econn|network|timeout/i.test(msg);
+        this.state = {
+          ...this.state || {},
+          currentVersion: this.currentVersion,
+          checkedAt: this.state?.checkedAt || nowIso,
+          status: isAbort ? "offline" : "error",
+          error: isAbort ? "\u041D\u0435\u0442 \u0441\u0435\u0442\u0438 \u0438\u043B\u0438 \u0442\u0430\u0439\u043C\u0430\u0443\u0442 GitHub" : msg.slice(0, 140)
+        };
+      } finally {
+        this.inFlight = null;
+      }
+      return this.getInfo();
+    };
+    this.inFlight = run();
+    return await this.inFlight;
+  }
+  startAutoCheck() {
+    if (process.env.AGY_DISABLE_AUTO_POLL === "1") return;
+    const t = setTimeout(() => {
+      this.checkNow({ force: false }).catch(() => {
+      });
+    }, 3500);
+    t.unref?.();
+  }
+};
+
 // server/index.mjs
-var __dirname = path4.dirname(fileURLToPath(import.meta.url));
-var PLUGIN_ROOT = path4.resolve(__dirname, "..");
+var __dirname = path5.dirname(fileURLToPath(import.meta.url));
+var PLUGIN_ROOT = path5.resolve(__dirname, "..");
 var APP_URI = "ui://context-tree/app.html";
 function parseCliArgs(argv) {
   let dataDir2 = null;
@@ -29969,6 +30313,10 @@ var settingsStore = new SettingsStore(dataDir);
 var titlesStore = new TitlesStore(dataDir);
 var scanner = new TranscriptScanner();
 var apiClient = new ConversationApiClient();
+var updateChecker = new UpdateChecker({
+  pluginRoot: PLUGIN_ROOT,
+  dataDir
+});
 function formatTokensShort(n) {
   if (!n) return "0";
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
@@ -30011,7 +30359,7 @@ async function recordCallMetaDiagnostic(toolName, extra, matchedId) {
     const metaKeys = extra?._meta && typeof extra._meta === "object" ? Object.keys(extra._meta) : [];
     const extraKeys = extra && typeof extra === "object" ? Object.keys(extra) : [];
     await fs4.writeFile(
-      path4.join(dataDir, "last-call-meta.json"),
+      path5.join(dataDir, "last-call-meta.json"),
       JSON.stringify(
         {
           at: (/* @__PURE__ */ new Date()).toISOString(),
@@ -30033,7 +30381,8 @@ async function computeSnapshot(filter = {}, extra = null, explicitSelectedId = n
   const [settings, titlesData, transcripts] = await Promise.all([
     settingsStore.load(),
     titlesStore.loadAll(),
-    scanner.scanAll()
+    scanner.scanAll(),
+    updateChecker.ensureLoaded()
   ]);
   const brainIds = transcripts.map((t) => t.id);
   const includeArchived = filter.includeArchived ?? settings.showArchived ?? false;
@@ -30061,18 +30410,19 @@ async function computeSnapshot(filter = {}, extra = null, explicitSelectedId = n
   return {
     ...snapshot,
     detectedConversationId,
-    detectedSource
+    detectedSource,
+    updateInfo: updateChecker.getInfo()
   };
 }
 async function loadAppHtml() {
   const overridePath = process.env.CONTEXT_TREE_APP_HTML;
-  const htmlPath = overridePath && overridePath.trim() ? overridePath.trim() : path4.join(PLUGIN_ROOT, "dist", "app.html");
+  const htmlPath = overridePath && overridePath.trim() ? overridePath.trim() : path5.join(PLUGIN_ROOT, "dist", "app.html");
   return await fs4.readFile(htmlPath, "utf8");
 }
 var server = new McpServer(
   {
     name: "context-tree-monitor",
-    version: "1.0.0"
+    version: "1.1.0"
   },
   {
     capabilities: {
@@ -30138,9 +30488,12 @@ K3(
     await recordCallMetaDiagnostic("open_context_monitor", extra, snapshot.detectedConversationId);
     const selectedId = snapshot.detectedConversationId || args?.selectedId || null;
     const active = snapshot.active;
+    const branchPart = active?.branch && active.descendantCount > 0 ? ` \u0412\u0435\u0442\u043A\u0430 (${active.descendantCount} \u043F\u043E\u0434\u0447\u0430\u0442\u043E\u0432): \u0432\u0441\u0435\u0433\u043E ${formatTokensShort(
+      active.branch.totalContextTokens
+    )}, \u043F\u0438\u043A \u043F\u043E\u0434\u0447\u0430\u0442\u0430 ${formatTokensShort(active.branch.maxChildContextTokens)}.` : "";
     const summaryText = active ? `\u041C\u043E\u043D\u0438\u0442\u043E\u0440 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430 (${snapshot.modeLabel}): \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 \u0447\u0430\u0442 \xAB${active.title}\xBB \u2014 ${formatTokensShort(
       active.contextTokens
-    )} / ${formatTokensShort(active.contextLimit)} (${active.percentOfLimit}%), \u043A\u044D\u0448 ${active.cacheHitRatio}%, \u0441\u0436\u0430\u0442\u0438\u0439: ${active.compactionCount}. \u0412\u0441\u0435\u0433\u043E \u0447\u0430\u0442\u043E\u0432: ${snapshot.stats.totalConversations} (\u043F\u043E\u0434\u0447\u0430\u0442\u043E\u0432: ${snapshot.stats.subchats}).` : `\u041C\u043E\u043D\u0438\u0442\u043E\u0440 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430 (${snapshot.modeLabel}): \u0447\u0430\u0442\u043E\u0432 \u043D\u0430\u0439\u0434\u0435\u043D\u043E ${snapshot.stats.totalConversations}.`;
+    )} / ${formatTokensShort(active.contextLimit)} (${active.percentOfLimit}%), \u043A\u044D\u0448 ${active.cacheHitRatio}%, \u0441\u0436\u0430\u0442\u0438\u0439: ${active.compactionCount}.${branchPart} \u0412\u0441\u0435\u0433\u043E \u0447\u0430\u0442\u043E\u0432: ${snapshot.stats.totalConversations} (\u043F\u043E\u0434\u0447\u0430\u0442\u043E\u0432: ${snapshot.stats.subchats}).` : `\u041C\u043E\u043D\u0438\u0442\u043E\u0440 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430 (${snapshot.modeLabel}): \u0447\u0430\u0442\u043E\u0432 \u043D\u0430\u0439\u0434\u0435\u043D\u043E ${snapshot.stats.totalConversations}.`;
     return {
       content: [{ type: "text", text: summaryText }],
       structuredContent: {
@@ -30347,12 +30700,35 @@ K3(
     };
   }
 );
+K3(
+  server,
+  "check_plugin_updates",
+  {
+    title: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F \u043F\u043B\u0430\u0433\u0438\u043D\u0430",
+    description: "App-only: \u0441\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u0435\u0442 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u0443\u044E \u0432\u0435\u0440\u0441\u0438\u044E plugin.json \u0441 \u0430\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0432\u0435\u0440\u0441\u0438\u0435\u0439 \u043D\u0430 GitHub.",
+    inputSchema: {
+      force: external_exports.boolean().optional()
+    },
+    _meta: {
+      ui: {
+        visibility: ["app"]
+      }
+    }
+  },
+  async (args) => {
+    const updateInfo = await updateChecker.checkNow({ force: args?.force !== false });
+    return {
+      content: [{ type: "text", text: updateInfo.updateAvailable ? "update_available" : "up_to_date" }],
+      structuredContent: { updateInfo }
+    };
+  }
+);
 async function recordStartupDiagnostic() {
   try {
     const env = apiClient.getEnvConfig();
     await fs4.mkdir(dataDir, { recursive: true });
     await fs4.writeFile(
-      path4.join(dataDir, "last-startup.json"),
+      path5.join(dataDir, "last-startup.json"),
       JSON.stringify(
         {
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -30372,7 +30748,8 @@ async function recordStartupDiagnostic() {
   }
 }
 async function main() {
-  await recordStartupDiagnostic();
+  await Promise.all([recordStartupDiagnostic(), updateChecker.ensureLoaded()]);
+  updateChecker.startAutoCheck();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

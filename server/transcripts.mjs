@@ -6,6 +6,9 @@ import readline from "node:readline";
 import { getModelInfo } from "./models.mjs";
 
 const SUBAGENT_CREATED_RE = /Created the following subagent:\s*\{[\s\S]*?"conversationId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i;
+const SWARM_ADDED_PAIR_RE = /"name"\s*:\s*"([^"\\]{1,64})"[\s\S]{0,400}?"conversation_id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/gi;
+const SWARM_TITLED_RE = /"status"\s*:\s*"titled"[\s\S]{0,120}?"title"\s*:\s*"((?:[^"\\]|\\.)+)"/i;
+const SWARM_WORKTREE_RE = /worktrees\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/swarm-([a-z0-9_-]+?)-[0-9a-f]{6,12}/i;
 const SENDER_UUID_RE = /\bsender=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 const BRAIN_UUID_RE = /\bbrain\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 const HOME_DIR = os.homedir();
@@ -132,11 +135,17 @@ async function parseTranscriptFile(cid, filePath, stat) {
   let createdAt = null;
   let lineIndex = 0;
 
-  // Subagent linking
+  // Subagent & Swarm linking
   const pendingSubagentMeta = [];
-  const spawnedChildren = []; // [{ childId, role, typeName, at }]
+  const spawnedChildren = []; // [{ childId, role, typeName, isSwarm, at }]
+  const spawnedChildIds = new Set();
+  let swarmTitle = null;
+  let isSwarmCoordinator = false;
+  let isSwarmWorker = false;
+  let swarmWorkerHintName = "";
   let inferredParentId = null;
-  let inferredLinkKind = null; // "sender" | "btw" | "brain_ref"
+  let inferredLinkKind = null; // "swarm_start" | "sender" | "btw" | "brain_ref" | "swarm_board_fallback"
+  let fallbackBoardParentId = null;
 
   const compactions = [];
   const history = [];
@@ -169,24 +178,61 @@ async function parseTranscriptFile(cid, filePath, stat) {
       lastStepStatus = status;
       lastStepHasToolCalls = Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0;
 
-      // Early parent detection from child's own opening steps (sender=... or /btw brain/<uuid>)
-      if (lineIndex <= 8 && !inferredParentId && (type === "SYSTEM_MESSAGE" || type === "USER_INPUT")) {
+      // Early parent detection from child's own opening steps (swarm start, sender=..., or /btw brain/<uuid>)
+      if (lineIndex <= 12 && (type === "SYSTEM_MESSAGE" || type === "USER_INPUT")) {
         const contentStr = typeof obj.content === "string" ? obj.content : "";
         if (contentStr) {
+          const isBoardNotification = /content=\[swarm\]\s*new board message/i.test(contentStr);
+          const isSwarmStartMsg =
+            /You have just started\./i.test(contentStr) && /assignment|board|swarm/i.test(contentStr);
+
+          if (isBoardNotification || isSwarmStartMsg) {
+            isSwarmWorker = true;
+          }
+
+          if (!swarmWorkerHintName) {
+            const wtMatch = SWARM_WORKTREE_RE.exec(contentStr);
+            if (wtMatch) {
+              swarmWorkerHintName = wtMatch[2];
+              if (!inferredParentId && wtMatch[1].toLowerCase() !== cid.toLowerCase()) {
+                inferredParentId = wtMatch[1].toLowerCase();
+                inferredLinkKind = "swarm_start";
+              }
+            }
+          }
+
           const senderMatch = SENDER_UUID_RE.exec(contentStr);
           if (senderMatch && senderMatch[1].toLowerCase() !== cid.toLowerCase()) {
-            inferredParentId = senderMatch[1].toLowerCase();
-            inferredLinkKind = "sender";
-          } else {
+            const senderId = senderMatch[1].toLowerCase();
+            if (isSwarmStartMsg) {
+              // The "You have just started." message ALWAYS comes from the real coordinator/spawner
+              inferredParentId = senderId;
+              inferredLinkKind = "swarm_start";
+            } else if (isBoardNotification) {
+              // Board messages may come from peer workers — only keep as last-resort fallback
+              if (!fallbackBoardParentId) fallbackBoardParentId = senderId;
+            } else if (!inferredParentId) {
+              inferredParentId = senderId;
+              inferredLinkKind = "sender";
+            }
+          } else if (!inferredParentId) {
             const brainMatch = BRAIN_UUID_RE.exec(contentStr);
             if (brainMatch && brainMatch[1].toLowerCase() !== cid.toLowerCase()) {
               inferredParentId = brainMatch[1].toLowerCase();
               inferredLinkKind = /\/btw\b|side question|branch/i.test(contentStr) ? "btw" : "brain_ref";
             }
           }
+
           if (!firstSystemHint && type === "SYSTEM_MESSAGE") {
             const roleLine = contentStr.match(/Role:\s*([^\n]+)/i);
-            if (roleLine) firstSystemHint = roleLine[1].trim().slice(0, 80);
+            if (roleLine) {
+              firstSystemHint = roleLine[1].trim().slice(0, 80);
+            } else if (isSwarmStartMsg) {
+              const nameMatch =
+                contentStr.match(/\byou are\s+["`@]?([a-z0-9][a-z0-9_-]{1,30})["`@]?\b/i) ||
+                contentStr.match(/\bname(?:d)?\s+["`@]?([a-z0-9][a-z0-9_-]{1,30})["`@]?\b/i);
+              if (nameMatch) firstSystemHint = nameMatch[1];
+            }
           }
         }
       }
@@ -215,7 +261,7 @@ async function parseTranscriptFile(cid, filePath, stat) {
       }
 
       if (type === "PLANNER_RESPONSE") {
-        // Track invoke_subagent calls to attach role/typeName to spawned child IDs
+        // Track invoke_subagent and swarm calls to attach role/typeName/title
         if (Array.isArray(obj.tool_calls)) {
           for (const tc of obj.tool_calls) {
             if (tc && tc.name === "invoke_subagent") {
@@ -225,6 +271,16 @@ async function parseTranscriptFile(cid, filePath, stat) {
                 typeName: stripQuotes(args.TypeName || args.typeName || ""),
                 at: at || null,
               });
+            } else if (tc && tc.name === "swarm") {
+              const args = tc.args || {};
+              const action = stripQuotes(args.action || "");
+              if (action === "add" || action === "title") {
+                isSwarmCoordinator = true;
+              }
+              if (action === "title") {
+                const t = stripQuotes(args.title || "");
+                if (t) swarmTitle = t;
+              }
             }
           }
         }
@@ -291,14 +347,56 @@ async function parseTranscriptFile(cid, filePath, stat) {
           const match = SUBAGENT_CREATED_RE.exec(obj.content);
           if (match) {
             const childId = match[1].toLowerCase();
-            if (childId !== cid.toLowerCase()) {
+            if (childId !== cid.toLowerCase() && !spawnedChildIds.has(childId)) {
+              spawnedChildIds.add(childId);
               const meta = pendingSubagentMeta.shift() || {};
               spawnedChildren.push({
                 childId,
                 role: meta.role || "",
                 typeName: meta.typeName || "",
+                isSwarm: false,
                 at: at || meta.at || null,
               });
+            }
+          }
+        } else if (obj.content.includes('"conversation_id"') && obj.content.includes('"added"')) {
+          isSwarmCoordinator = true;
+          SWARM_ADDED_PAIR_RE.lastIndex = 0;
+          let m;
+          while ((m = SWARM_ADDED_PAIR_RE.exec(obj.content)) !== null) {
+            const workerName = m[1].trim();
+            const childId = m[2].toLowerCase();
+            if (childId !== cid.toLowerCase() && !spawnedChildIds.has(childId)) {
+              spawnedChildIds.add(childId);
+              spawnedChildren.push({
+                childId,
+                role: workerName,
+                typeName: "swarm",
+                isSwarm: true,
+                at: at || null,
+              });
+            }
+          }
+        } else if (!swarmTitle && obj.content.includes('"titled"')) {
+          const tm = SWARM_TITLED_RE.exec(obj.content);
+          if (tm) {
+            try {
+              swarmTitle = JSON.parse(`"${tm[1]}"`);
+            } catch {
+              swarmTitle = tm[1];
+            }
+            isSwarmCoordinator = true;
+          }
+        }
+
+        // Also detect swarm worker name from worktree path in early tool outputs
+        if (isSwarmWorker && !swarmWorkerHintName && lineIndex <= 30 && obj.content.includes("/worktrees/")) {
+          const wtMatch = SWARM_WORKTREE_RE.exec(obj.content);
+          if (wtMatch) {
+            swarmWorkerHintName = wtMatch[2];
+            if (!inferredParentId && wtMatch[1].toLowerCase() !== cid.toLowerCase()) {
+              inferredParentId = wtMatch[1].toLowerCase();
+              inferredLinkKind = "swarm_start";
             }
           }
         }
@@ -306,6 +404,11 @@ async function parseTranscriptFile(cid, filePath, stat) {
     }
   } finally {
     rl.close();
+  }
+
+  if (!inferredParentId && fallbackBoardParentId) {
+    inferredParentId = fallbackBoardParentId;
+    inferredLinkKind = "swarm_board_fallback";
   }
 
   const modelInfo = getModelInfo(lastPlanner?.model);
@@ -323,8 +426,12 @@ async function parseTranscriptFile(cid, filePath, stat) {
     sizeBytes: stat.size,
     createdAt: createdAt || new Date(stat.birthtimeMs || stat.mtimeMs).toISOString(),
     updatedAt: lastCreatedAt || new Date(stat.mtimeMs).toISOString(),
-    localTitle: firstUserTitle || firstSystemHint || `Чат ${cid.slice(0, 8)}`,
+    localTitle: firstUserTitle || swarmWorkerHintName || firstSystemHint || `Чат ${cid.slice(0, 8)}`,
     detectedProject: pickTopProject(projectCounts),
+    isSwarmCoordinator,
+    isSwarmWorker,
+    swarmTitle,
+    swarmWorkerHintName: swarmWorkerHintName || null,
     userTurns,
     plannerSteps,
     model: modelInfo,

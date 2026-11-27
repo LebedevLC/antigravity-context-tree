@@ -1,7 +1,7 @@
 {
   "name": "context-tree",
   "displayName": "Context & Subchats",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Интерактивная панель мониторинга занятого контекста (токены, кэш, автокомпакции CHECKPOINT) и дерева чатов/подчатов Antigravity в боковой шторке и на полной странице.",
   "homepage": "https://github.com/LebedevLC/antigravity-context-tree",
   "repository": "https://github.com/LebedevLC/antigravity-context-tree",
